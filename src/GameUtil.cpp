@@ -607,12 +607,12 @@ std::string GameUtil::getStringFromClipboard() {
  * @param localClientNum The local client index.
  * @param command The command string to execute.
  */
-void GameUtil::Cbuf_AddText(LocalClientNum_t localClientNum, const std::string& command) {
+bool GameUtil::Cbuf_AddText(LocalClientNum_t localClientNum, const std::string& command) {
     commandTextBuffers = reinterpret_cast<char**>(0xAA754A8_b);
     int bufferIndex = Functions::_GetAvailableCommandBufferIndex();
     if (bufferIndex == -1) {
         Console::printf("[Cbuf_AddText] No available command buffer");
-        return; 
+        return false;
     }
 
     Functions::_Sys_EnterCriticalSection(193);
@@ -629,12 +629,20 @@ void GameUtil::Cbuf_AddText(LocalClientNum_t localClientNum, const std::string& 
     std::string commandWithNewline = command + "\n";
     size_t commandLength = commandWithNewline.length();
 
+    bool queued = false;
     if (currentOffset + commandLength < bufferSize) {
         strcpy_s(&(*commandBuffer)[currentOffset], bufferSize - currentOffset, commandWithNewline.c_str());
         *(reinterpret_cast<uint32_t*>(commandBuffer) + 3) += static_cast<uint32_t>(commandLength);
+        queued = true;
+    }
+    else {
+        // The other silent drop. Say so: a command that vanishes here is
+        // indistinguishable from one that ran and did nothing.
+        Console::printf("[Cbuf_AddText] command buffer full, dropped: %s", command.c_str());
     }
 
     Functions::_Sys_LeaveCriticalSection(193);
+    return queued;
 }
 
 

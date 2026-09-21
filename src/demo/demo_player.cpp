@@ -436,10 +436,26 @@ namespace demo_player
 			{
 				return;
 			}
-			name = std::move(g_pending_name);
-			g_pending_name.clear();
+			name = g_pending_name;   // COPY, not move -- see below
 		}
-		GameUtil::Cbuf_AddText(LOCAL_CLIENT_0, std::format("demo_play \"{}\"", name));
+		// ⛔ DO NOT CLEAR THE PENDING NAME UNTIL THE COMMAND IS ACTUALLY QUEUED.
+		// 2026-09-22: this cleared it first, and when the engine had no free command
+		// buffer during the teardown the command was dropped in silence. The demo
+		// had already been stopped, so the game sat at the main menu with nothing
+		// left to restart it -- reported as "when i press j it just sends me to the
+		// wwii main menu". Cbuf_AddText now reports that, so a drop just means we
+		// try again on the next tick instead of losing the demo.
+		if (!GameUtil::Cbuf_AddText(LOCAL_CLIENT_0, std::format("demo_play \"{}\"", name)))
+		{
+			return;                  // keep it pending; the give-up timer still applies
+		}
+		{
+			std::lock_guard<std::mutex> lock(g_pending_lock);
+			if (g_pending_name == name)
+			{
+				g_pending_name.clear();
+			}
+		}
 	}
 
 	bool paused()

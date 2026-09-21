@@ -37,7 +37,11 @@ public:
 	static bool isOnlyWhitespace(const std::string& str);
 	static std::string getStringFromClipboard();
 	//static void Cbuf_AddText(LocalClientNum_t localClientNum, std::string text);
-	static void Cbuf_AddText(LocalClientNum_t localClientNum, const std::string& command);
+	// Returns FALSE when the command was DROPPED -- either no command buffer was
+	// free, or the one we got is full. Both used to fail silently, which is how a
+	// deferred demo restart went missing and left the game sitting at the menu
+	// (2026-09-22). Callers that must not lose a command have to retry.
+	static bool Cbuf_AddText(LocalClientNum_t localClientNum, const std::string& command);
 	static float safeStringToFloat(const std::string& str);
 	static int safeStringToInt(const std::string& str);
 	static std::string getAddressAsString(void* address);

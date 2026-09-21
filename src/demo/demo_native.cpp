@@ -5578,8 +5578,8 @@ namespace demo_native
 			}
 			if (GetTickCount64() - g_restart_started > RESTART_GIVE_UP_MS)
 			{
-				Console::printf("[demo] restart-seek: gave up waiting for %s to reload. "
-					"The demo is playing from the start; seek manually.",
+				Console::printf("[demo] restart-seek: gave up waiting for %s to come back. "
+					"Press Play on it again (F9 -> Demos); the dolly points are still there.",
 					g_restart_name.c_str());
 				g_restart_stage = RestartStage::Idle;
 				return;
@@ -5598,13 +5598,20 @@ namespace demo_native
 				{
 					return;
 				}
+				// CLIENT THREAD via the command buffer, and `play` so a demo that
+				// reopened paused does not sit there looking broken.
+				// ⛔ ONLY ADVANCE IF THE COMMAND WAS ACTUALLY QUEUED. A reload is
+				// exactly when the engine runs out of free command buffers, and a
+				// dropped seek here would leave the demo playing from 0 with the
+				// dolly waiting for footage that never arrives.
+				if (!GameUtil::Cbuf_AddText(LOCAL_CLIENT_0,
+					std::format("demo_seek_to {} play", g_restart_target)))
+				{
+					return;                  // stay Armed and try again next frame
+				}
 				g_restart_stage = RestartStage::Seeking;
 				Console::printf("[demo] restart-seek: playback is back at %d ms, "
 					"fast-forwarding to %d ms", t, g_restart_target);
-				// CLIENT THREAD via the command buffer, and `play` so a demo that
-				// reopened paused does not sit there looking broken.
-				GameUtil::Cbuf_AddText(LOCAL_CLIENT_0,
-					std::format("demo_seek_to {} play", g_restart_target));
 				return;
 			}
 			// Seeking: the command is queued and does its own trim-to-tick and
