@@ -88,6 +88,13 @@ namespace demo_camera
 	// (RULE A3.1 -- that address must not be hooked twice).
 	void apply_after_camera_move();
 
+	// Rebuilds the refdef view AXIS from the camera angles with our roll in it.
+	// Called from the CG_CalcFov hook (view setup) -- the angles were proven to
+	// carry roll correctly while the picture stayed level, so the axis is what
+	// drops it. Idempotent: deriving rather than rotating, so repeated calls in
+	// one frame cannot compound into a spin.
+	void apply_roll_to_view_axis();
+
 	// ---- high-resolution screenshot ----------------------------------
 	void screenshot();
 }

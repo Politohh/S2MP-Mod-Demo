@@ -5263,7 +5263,21 @@ namespace demo_native
 		int g_restart_target = -1;
 		std::string g_restart_name;
 		std::uint64_t g_restart_started = 0;
-		bool g_restart_seek_enabled = true;
+		// ⛔ OFF BY DEFAULT AS OF BUILD 13. The restart works in two halves -- stop
+		// the demo, then reopen it -- and the reopen command is handed to an engine
+		// that has NO FREE COMMAND BUFFERS during a teardown. Build 12 made that
+		// failure visible and retried it; the retries failed too (16 of them in the
+		// user's log), so the demo stays closed and the game sits at the menu.
+		//
+		// That is worse than not seeking: it cost the tester a session every time,
+		// and it broke ORDINARY SCRUBBING as well -- "skip back in the demo using
+		// left arrow key also just takes you to the main menu", because the left
+		// arrow is a backward seek like any other.
+		//
+		// Short seeks (within the ~1.45 s rewind budget) work properly and land on
+		// the exact tick, so that is what ships on by default. `demo_seek_restart 1`
+		// re-enables the reload for anyone who wants to try it.
+		bool g_restart_seek_enabled = false;
 
 		// Generous: a restart reloads the level. Measured ~3 s on the tester's
 		// machine with zones warm; a cold load or a slower disk can be far worse,

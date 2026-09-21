@@ -29,8 +29,9 @@
 //   9  stopped forcing the clock; repeat pass (regressed: force still ran on a failed pass)
 //  10  never force inside the loop -- the ~1.5s rewind budget is a hard engine limit
 //  11  restart+fast-forward (MW3 route) -- stranded at the menu: dropped Cbuf command
-//  12  Cbuf_AddText reports drops; the deferred restart retries instead of vanishing
+//  12  Cbuf_AddText reports drops; deferred restart retries (retries failed too)
+//  13  restart-seek OFF by default (it broke scrubbing); roll via the view axis
 namespace mod_build
 {
-	constexpr int NUMBER = 12;
+	constexpr int NUMBER = 13;
 }
