@@ -46,6 +46,14 @@ namespace demo_camera
 
 		float g_roll = 0.0f;
 
+		// Roll instrumentation -- written on the client thread inside the camera
+		// hook, read by demo_roll_probe on the console thread. Relaxed atomics:
+		// these are a diagnostic, and a torn read of a counter is not worth a lock
+		// on a per-frame path.
+		std::atomic<float> g_roll_pre{ 0.0f };          // what the mover left
+		std::atomic<float> g_roll_post{ 0.0f };         // what our write left
+		std::atomic<std::uint64_t> g_roll_writes{ 0 };  // times we wrote it
+
 		// -----------------------------------------------------------------
 		//  FIELD OF VIEW — overridden at the engine's FINAL fov function
 		// -----------------------------------------------------------------
@@ -373,8 +381,24 @@ namespace demo_camera
 				cmd_ok ? std::format("{:.1f}", cmd_roll_val).c_str() : "unreadable");
 			Console::printf("[cam]   cg+2355668 (derived, written AFTER mover):        %s",
 				cg_ok ? std::format("{:.1f}", cg_roll).c_str() : "unreadable");
-			Console::printf("[cam]   both near %.1f but the picture is level -> the view "
-				"axis is built from neither; that is the next thing to trace.", g_roll);
+			// The in-hook samples. These are what actually answer the question;
+			// the two reads above are taken on the wrong thread at the wrong time.
+			const auto writes = g_roll_writes.load(std::memory_order_relaxed);
+			Console::printf("[cam]   in-hook: mover left %.1f, we wrote %.1f, %llu write(s)",
+				g_roll_pre.load(std::memory_order_relaxed),
+				g_roll_post.load(std::memory_order_relaxed),
+				static_cast<unsigned long long>(writes));
+			if (writes == 0)
+			{
+				Console::printf("[cam]   -> 0 writes: the camera hook is NOT running. "
+					"Nothing about roll can work until that is fixed.");
+			}
+			else
+			{
+				Console::printf("[cam]   -> the write lands each frame and the field still "
+					"reads 0 from here, so something downstream zeroes it. Roll has to be "
+					"applied to the view AXIS instead, not to these angles.");
+			}
 		}
 
 		void cmd_screenshot() { screenshot(); }
@@ -587,7 +611,20 @@ namespace demo_camera
 			static_cast<char*>(cg) + CAM_ROLL_OFF);
 		if (readable(roll_field, sizeof(float)))
 		{
+			// SAMPLED IN THE HOOK, not from the console. A user log showed this
+			// field reading 0.0 from demo_roll_probe while cl.viewangles[2] held
+			// 20.0 -- but the probe runs on the console thread at an arbitrary
+			// point in the frame, so it could not distinguish:
+			//   (a) our write never ran, from
+			//   (b) it ran and something downstream zeroed the field.
+			// g_roll_pre is what the ENGINE'S OWN MOVER left here, read before we
+			// touch it. If the mover really derived roll from the usercmd, this
+			// would already equal g_roll -- the log says it is 0, which is what
+			// disproves the "plumbed, just never fed" theory in CLAUDE.md.
+			g_roll_pre.store(*roll_field, std::memory_order_relaxed);
 			*roll_field = g_roll;
+			g_roll_post.store(*roll_field, std::memory_order_relaxed);
+			g_roll_writes.fetch_add(1, std::memory_order_relaxed);
 		}
 	}
 

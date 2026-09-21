@@ -450,6 +450,37 @@ namespace demo_native
 			}
 			jump(cl, index);
 
+			// ⭐ THE MEASUREMENT THAT SEPARATES THE TWO SUSPECTS. Added 2026-09-21
+			// after a user log showed the cursor moving FORWARD ~2300 bytes on every
+			// rewind instead of landing on the slot's own fileOff.
+			//
+			// Until now the "after" line was printed AFTER the clock force below, so
+			// the engine's jump and our force were indistinguishable in the output:
+			// a clock that moved back proved nothing about whether the FILE moved.
+			// This samples the same three values in between, so one press answers:
+			//
+			//   cursor == fileOff   -> the engine seeked; the bug is downstream
+			//   cursor unchanged    -> ProcessKeyFrameJump did NOTHING, and the
+			//                          force alone is what produces the freeze
+			//                          (clock in the past, stream still in the
+			//                          present, engine crawls to catch up)
+			//
+			// ProcessKeyFrameJump's decompile (above) opens with
+			//     sub_9123E0(demoFileHandle, slot.fileOffset, 2)
+			//     PlaybackData[24] = slot.fileOffset
+			// so "cursor unchanged" means it returned before reaching that, and the
+			// next thing to find is its early-out condition.
+			const int t_jumped = current_demo_time();
+			const int s_jumped = snap_time();
+			const int c_jumped = cursor();
+			const int want_off = slot_i32(index, 4);
+			Console::printf("[demo]   jumped: demoT=%d snapT=%d cursor=%d   "
+				"(cursor %+d, wanted fileOff=%d -> %s)",
+				t_jumped, s_jumped, c_jumped, c_jumped - c_before, want_off,
+				(want_off >= 0 && c_jumped >= want_off - 4096 && c_jumped <= want_off + 4096)
+					? "THE FILE MOVED"
+					: "FILE DID NOT MOVE -- the engine's jump is a no-op");
+
 			// =============================================================
 			//  FORCE THE CLOCK TO THE KEYFRAME — from Caball009's CoD4-X
 			//  Demo Rewinding (Call-of-Duty-4-X-Demo-Rewinding), 2026-08-11
