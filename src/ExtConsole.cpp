@@ -11,6 +11,7 @@
 #include <array>
 #include <signal.h>
 #include "Console.hpp"
+#include "ModBuild.hpp"
 #include "DevMode.hpp"
 #include "BuildMap.hpp"
 #include <thread>
@@ -129,6 +130,9 @@ void ExtConsole::extConInit(int extConsoleMode) {
 	// so say it out loud before anything uses one (RULE A15). Detection is by the
 	// EXE_ERR_PROCESS_DEMO_FILE_FAILED string, the same signature RULE A2 uses to
 	// verify a Cheat Engine attachment -- not a version number or a module size.
+	// Package build number FIRST -- if a log is ever read without it, there is no
+	// way to know which DLL wrote the lines underneath. See src/ModBuild.hpp.
+	Console::printf("[s2mp] package build %d", mod_build::NUMBER);
 	Console::printf("[build] detected: %s   (%zu addresses in the Store table)",
 		build_map::name(), build_map::mapped_count());
 	if (build_map::current() == build_map::Build::Unknown)
