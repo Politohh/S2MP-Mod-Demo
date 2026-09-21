@@ -330,6 +330,53 @@ namespace demo_camera
 			Console::printf("camera roll: %.1f deg", g_roll);
 		}
 
+		// RULE A15 -- "roll does nothing" has to be diagnosable without a debugger.
+		// Prints the value we want next to BOTH fields it is written into, plus the
+		// two gates, so one line says whether the writes are landing and being
+		// overwritten, or never running at all.
+		void cmd_roll_probe()
+		{
+			const bool playing = demo_is_playing();
+			const bool freecam = theater_camera::get_mode()
+				== theater_camera::THEATER_CAMERA_FREECAM;
+
+			float cg_roll = 0.0f;
+			bool cg_ok = false;
+			if (void* cg = demo_game::cg_globals_for(0))
+			{
+				const auto* f = reinterpret_cast<const float*>(
+					static_cast<char*>(cg) + CAM_ROLL_OFF);
+				if (readable(f, sizeof(float)))
+				{
+					cg_roll = *f;
+					cg_ok = true;
+				}
+			}
+
+			float cmd_roll_val = 0.0f;
+			bool cmd_ok = false;
+			if (void* cl = demo_game::client_active_for(0))
+			{
+				const auto* f = reinterpret_cast<const float*>(
+					static_cast<char*>(cl) + demo_game::CA_CMD_VIEWANGLES);
+				if (readable(f, 12))
+				{
+					cmd_roll_val = f[2];
+					cmd_ok = true;
+				}
+			}
+
+			Console::printf("[cam] roll probe: want %.1f | demo %s | freecam %s",
+				g_roll, playing ? "playing" : "NOT PLAYING",
+				freecam ? "yes" : "NO (roll only drives the free camera)");
+			Console::printf("[cam]   cl.viewangles[2] (usercmd, written BEFORE mover): %s",
+				cmd_ok ? std::format("{:.1f}", cmd_roll_val).c_str() : "unreadable");
+			Console::printf("[cam]   cg+2355668 (derived, written AFTER mover):        %s",
+				cg_ok ? std::format("{:.1f}", cg_roll).c_str() : "unreadable");
+			Console::printf("[cam]   both near %.1f but the picture is level -> the view "
+				"axis is built from neither; that is the next thing to trace.", g_roll);
+		}
+
 		void cmd_screenshot() { screenshot(); }
 	}
 
@@ -459,6 +506,69 @@ namespace demo_camera
 		}
 	}
 
+	// ---------------------------------------------------------------------
+	//  ROLL, SECOND ATTEMPT — fed on the USERCMD side, before the mover
+	// ---------------------------------------------------------------------
+	// ⛔ THE ORIGINAL APPROACH (apply_after_camera_move, below) WAS AN
+	// INFERENCE AND THE USER HAS NOW DISPROVEN IT. CLAUDE.md's "ROLL IS
+	// PLUMBED AND SIMPLY NEVER FED" reasoned that because both movers write
+	// cg+2355668 from usercmd angle[2], writing that field after the mover
+	// would give a dutch angle. It shipped labelled "NOT run in game -- a
+	// CANDIDATE". Reported 2026-09-21: it does nothing.
+	//
+	// WHAT THE RECORD ALREADY SAYS, and what the old fix contradicted.
+	// theater_camera::seed_freecam_from_current_view has carried this note
+	// since it was written:
+	//
+	//     "Angles live on the usercmd side -- CL_Demo_FreeCameraMove derives
+	//      cg's freecam angles from the usercmd, so seeding cl.viewangles is
+	//      what actually stops the camera snapping to wherever the mouse is."
+	//
+	// So the authoritative store is cl.viewangles (clientActive+25900), and
+	// cg+2355660..668 is a DERIVED copy. CL_Demo_SetCameraMode's own seed
+	// ends `*(float*)(clientActive + 25908) = 0` -- the engine zeroing the
+	// roll slot -- which pins +25908 as roll on that side.
+	//
+	// Writing the derived copy after the mover therefore lands one step too
+	// far downstream: whatever consumes the angles to build the view axis
+	// either reads the usercmd side, or reads a copy taken before we wrote.
+	// Feeding the SOURCE before the mover runs lets the engine's own
+	// derivation carry roll through every step it already performs.
+	//
+	// STATUS: HYPOTHESIS, consistent with the record but NOT yet confirmed in
+	// game. The old post-write is deliberately LEFT IN PLACE -- both fields are
+	// rewritten by the engine every frame, so feeding both costs nothing and
+	// covers the case where the view is built from the derived copy after all.
+	// If roll works now, one of the two did it; `demo_roll_probe` prints both
+	// fields so the next session can tell which and delete the other.
+	void apply_before_camera_move()
+	{
+		if (g_roll == 0.0f)
+		{
+			return;                       // stock behaviour, touch nothing
+		}
+		// BOTH GATES ARE LOAD-BEARING. This writes cl.viewangles, which during
+		// LIVE play is the player's own aim -- rolling that would be a bug, not
+		// a feature. Free camera is additionally the only mode routed through
+		// the mover this rides.
+		if (!demo_is_playing()
+			|| theater_camera::get_mode() != theater_camera::THEATER_CAMERA_FREECAM)
+		{
+			return;
+		}
+		void* cl = demo_game::client_active_for(0);
+		if (!cl)
+		{
+			return;
+		}
+		auto* ang = reinterpret_cast<float*>(
+			static_cast<char*>(cl) + demo_game::CA_CMD_VIEWANGLES);
+		if (readable(ang, 12))
+		{
+			ang[2] = g_roll;
+		}
+	}
+
 	void apply_after_camera_move()
 	{
 		if (g_roll == 0.0f)
@@ -512,6 +622,7 @@ namespace demo_camera
 		GameUtil::addCommand("demo_fov", cmd_fov);
 		GameUtil::addCommand("demo_thirdperson", cmd_third);
 		GameUtil::addCommand("demo_roll", cmd_roll);
+		GameUtil::addCommand("demo_roll_probe", cmd_roll_probe);
 		GameUtil::addCommand("demo_screenshot", cmd_screenshot);
 	}
 }

@@ -613,6 +613,13 @@ namespace dolly
 			// would just be wasted key-state polling with no effect of our own.
 			const bool is_local = (a1 == LOCAL_CLIENT);
 			const float speed_base = is_local ? demo_native::begin_speed_modifier() : 0.0f;
+			// ROLL is fed BEFORE the mover, into the usercmd angles it derives
+			// cg's freecam angles from. The post-write below is kept as well --
+			// see the note above demo_camera::apply_before_camera_move.
+			if (is_local)
+			{
+				demo_camera::apply_before_camera_move();
+			}
 			const std::int64_t r = g_freecam_move_orig(a1, a2);
 			if (is_local)
 			{

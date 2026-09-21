@@ -6,6 +6,7 @@
 #include "demo/demo_native.hpp"
 #include "demo/demo_player.hpp"
 #include "demo/demo_camera.hpp"
+#include "demo/demo_capture.hpp"
 #include "demo/demo_display.hpp"
 #include "demo/demo_library.hpp"
 #include "demo/demo_playback.hpp"
@@ -745,7 +746,13 @@ namespace demo_gui
 			{
 				float ts = demo_player::timescale();
 				ImGui::SetNextItemWidth(200.0f);
-				if (ImGui::SliderFloat("Speed", &ts, 0.1f, 4.0f, "%.2fx"))
+				// LOGARITHMIC, not linear. The range now reaches 0.01 (1/100), and on
+				// a linear track everything from 0.01 to 0.1 would share 2% of the
+				// width -- i.e. the slow-motion end, which is the whole reason for
+				// the lower floor, would be unpickable. Log scaling gives each
+				// halving of speed the same travel.
+				if (ImGui::SliderFloat("Speed", &ts, 0.01f, 4.0f, "%.2fx",
+					ImGuiSliderFlags_Logarithmic))
 				{
 					GameUtil::Cbuf_AddText(LOCAL_CLIENT_0,
 						std::format("demo_speed {:.3f}", ts));
@@ -2491,7 +2498,7 @@ namespace demo_gui
 			const bool space = edge(VK_SPACE, g_space_edge);
 			const bool left = edge(VK_LEFT, g_left_edge);
 			const bool right = edge(VK_RIGHT, g_right_edge);
-			// Dollycam marker keys: K = drop a point, L = clear the list,
+			// Dollycam marker keys: K = drop a point, L = delete the last one,
 			// J = play from the first point. Same edge/gate pattern as the
 			// transport keys above -- polled every frame regardless of focus so a
 			// key held across a focus change is never seen as a fresh press.
@@ -2574,7 +2581,23 @@ namespace demo_gui
 			// tab -- there is no console command wrapping add/clear/play, so
 			// there is nothing to queue.
 			if (key_k) { dolly::add_point(); }
-			if (key_l) { dolly::clear_points(); }
+			// ⛔ 2026-09-21: L used to CLEAR THE WHOLE LIST. One mis-hit next to K
+			// destroyed a path with no undo, and "delete cameras" means removing the
+			// one you just placed, not the shot. L now deletes the LAST point, so
+			// K/L are a matched place/unplace pair you can tap repeatedly.
+			// Clearing everything is still on the Dolly tab's button and `dolly_clear`.
+			if (key_l)
+			{
+				const int n = dolly::point_count();
+				if (n > 0)
+				{
+					dolly::delete_point(n - 1);
+				}
+				else
+				{
+					Console::printf("[dolly] L: no points to delete (K adds one)");
+				}
+			}
 			if (key_j) { dolly::play_from_start(); }
 		}
 
@@ -2651,6 +2674,12 @@ namespace demo_gui
 			// Re-asserts the frame-rate cap while it is unlocked past 250.
 			// No-op below that -- see demo_display.hpp for why.
 			demo_display::tick();
+
+			// ⭐ CAPTURE GOES HERE, AND ONLY HERE. Before the ImGui block below, so
+			// the ProRes file contains clean game footage with no tool window in it.
+			// Moving this call after the overlay draw would silently start baking
+			// the UI into every recording.
+			demo_capture::on_present(swap);
 
 			// Skip all drawing while minimised. The back buffer is 0x0 then, so
 			// creating a view or issuing draws is wasted at best and an error at

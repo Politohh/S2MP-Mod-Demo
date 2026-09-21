@@ -184,7 +184,7 @@ namespace demo_player
 			const auto* args = GameUtil::getCmdArgs();
 			if (!args || args->argc[args->nesting] < 2)
 			{
-				Console::printf("playback speed: %.2fx   (demo_speed <0.1 .. 4.0>)",
+				Console::printf("playback speed: %.2fx   (demo_speed <0.01 .. 4.0>)",
 					timescale());
 				return;
 			}
@@ -499,7 +499,12 @@ namespace demo_player
 
 	void set_timescale(float value)
 	{
-		const float v = std::clamp(value, 0.1f, 4.0f);
+		// 2026-09-21: floor 0.1 -> 0.01 on request. The CUSTOM theater honours the
+		// whole range (its clock is ours). NATIVE playback writes the engine's own
+		// speed field, which has its own floor -- demo_native::set_timescale reports
+		// when the engine refuses to go as low as asked, so a request that does not
+		// land says so instead of appearing to work.
+		const float v = std::clamp(value, 0.01f, 4.0f);
 		switch (active())
 		{
 		case Kind::Engine: demo_native::set_timescale(v); break;

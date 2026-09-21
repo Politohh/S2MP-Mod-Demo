@@ -11,6 +11,7 @@
 #include "demo/demo_native.hpp"
 #include "demo/demo_playback.hpp"
 #include "demo/demo_camera.hpp"
+#include "demo/demo_capture.hpp"
 #include "demo/demo_display.hpp"
 #include "demo/demo_player.hpp"
 #include "demo/demo_recording.hpp"
@@ -47,6 +48,10 @@ namespace demo
 		// dependency on either demo system -- works in live play too.
 		demo_display::init();
 		demo_player::init();
+		// ProRes capture. Registers commands only -- it installs no hook of its
+		// own and rides demo_gui's existing Present hook, so the order here is
+		// free. Nothing happens until demo_capture_start.
+		demo_capture::init();
 		demo_timescale::init();
 		theater_camera::init();
 		// Dolly camera for native playback. Must come after demo_native::init()

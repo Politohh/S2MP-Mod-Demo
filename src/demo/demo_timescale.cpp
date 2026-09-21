@@ -27,8 +27,24 @@ namespace demo_timescale
 		// The playback clock integrates factor() every frame, so these bounds are
 		// load-bearing: 0 would freeze playback outright and 1000 would drain the
 		// demo file in a handful of frames.
-		constexpr float MIN_SCALE = 0.05f;
+		//
+		// 2026-09-21: floor lowered 0.05 -> 0.01 (1/100 speed) on request, for
+		// ramp and impact shots. Safe for the CUSTOM theater because advance_clock()
+		// integrates wall_delta * scale into our own clock, and scale_lui_delta's
+		// per-stream `carry` already accumulates sub-millisecond remainders -- at
+		// 0.01 a 16 ms frame contributes 0.16 ms, which is exactly what that carry
+		// was written for, just exercised more often.
+		// ⛔ NATIVE playback does NOT take its speed from here: that is the engine's
+		// own PlaybackData+28. See demo_native::set_timescale for its own floor.
+		constexpr float MIN_SCALE = 0.01f;
 		constexpr float MAX_SCALE = 8.0f;
+
+		// The audio pitch multiplier keeps the OLD 0.05 floor, deliberately.
+		// Pitching every voice down 100x is inaudible rumble, and the mixer applies
+		// its own base-pitch clamp BEFORE this multiplier (see effective_audio_scale),
+		// so handing it 0.01 is untested territory for no audible gain. Slow motion
+		// below 1/20 speed simply holds 1/20 pitch.
+		constexpr float MIN_AUDIO_SCALE = 0.05f;
 
 		// S2 has no Com_TimeScaleMsec symbol (H1/MWR do). Real world speed is driven by:
 		//   1) demo_clock_ms() * factor  → theater feed / cl_serverTime
@@ -81,7 +97,7 @@ namespace demo_timescale
 			// The engine clamps the BASE pitch before this multiplier, not the
 			// product, so keep the audio scale inside the range both demo systems
 			// actually use rather than trusting the mixer with extremes.
-			return std::clamp(scale, MIN_SCALE, 4.0f);
+			return std::clamp(scale, MIN_AUDIO_SCALE, 4.0f);
 		}
 
 		void SND_UpdateTimeScale_stub()

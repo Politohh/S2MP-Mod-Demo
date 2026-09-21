@@ -77,6 +77,12 @@ namespace demo_camera
 	// this was modelled on. No-op outside free camera.
 	void on_wheel(float notches, bool alt_held);
 
+	// Called from dolly's EXISTING CL_Demo_FreeCameraMove hook, BEFORE the
+	// engine's own mover. Feeds roll into cl.viewangles (the usercmd side),
+	// which is the source the mover derives cg's freecam angles from -- see the
+	// long note in the .cpp for why the post-write alone was not enough.
+	void apply_before_camera_move();
+
 	// Called from dolly's EXISTING CL_Demo_FreeCameraMove hook, after the
 	// engine's own mover and after bonecam. Never installs a hook of its own
 	// (RULE A3.1 -- that address must not be hooked twice).

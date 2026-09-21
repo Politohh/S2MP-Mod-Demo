@@ -4748,9 +4748,23 @@ namespace demo_native
 		if (!g) { return; }
 		auto* p = reinterpret_cast<float*>(g + 28);
 		if (!readable(p, sizeof(float))) { return; }
-		if (v < 0.1f) { v = 0.1f; }
+		// 2026-09-21: floor lowered 0.1 -> 0.01 on request (1/100 speed).
+		// ⚠ THE OLD 0.1 WAS LABELLED "the engine's own clamp" BUT NEVER PROVEN --
+		// it matches the range the engine's own up/down-arrow control offers, which
+		// is not the same as the engine REFUSING a lower value. So we now write what
+		// was asked and check whether it survived, rather than pre-clamping to a
+		// limit that may not exist.
+		// The read-back below only catches an INSTANT rejection (a mirrored or
+		// write-protected field). If the engine instead clamps where it CONSUMES
+		// this value, the field still reads 0.01 and only the picture will tell --
+		// which is why demo_speed prints the value it actually left behind.
+		if (v < 0.01f) { v = 0.01f; }
 		if (v > 4.0f) { v = 4.0f; }     // the engine's own clamp
 		*p = v;
+		if (const float got = *p; got != v)
+		{
+			Console::printf("[demo] speed %.2fx: the engine held it at %.2fx", v, got);
+		}
 	}
 
 	// ---- hide the broken game HUD ------------------------------------------
