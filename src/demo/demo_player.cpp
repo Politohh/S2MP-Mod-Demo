@@ -184,7 +184,7 @@ namespace demo_player
 			const auto* args = GameUtil::getCmdArgs();
 			if (!args || args->argc[args->nesting] < 2)
 			{
-				Console::printf("playback speed: %.2fx   (demo_speed <0.05 .. 4.0>)",
+				Console::printf("playback speed: %.2fx   (demo_speed <0.05 .. 10.0>)",
 					timescale());
 				return;
 			}
@@ -502,7 +502,7 @@ namespace demo_player
 		// 0.05, USER-MEASURED 2026-09-21: it plays cleanly at 1/20 speed and goes
 		// visibly laggy below that. Was 0.1, briefly 0.01, now pinned where the
 		// footage actually holds up.
-		const float v = std::clamp(value, 0.05f, 4.0f);
+		const float v = std::clamp(value, 0.05f, 10.0f);
 		switch (active())
 		{
 		case Kind::Engine: demo_native::set_timescale(v); break;

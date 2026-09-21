@@ -750,7 +750,7 @@ namespace demo_gui
 				// track the whole slow-motion end would be squeezed into a few pixels
 				// -- and that end is the one used for filming. Log scaling gives each
 				// halving of speed the same travel.
-				if (ImGui::SliderFloat("Speed", &ts, 0.05f, 4.0f, "%.2fx",
+				if (ImGui::SliderFloat("Speed", &ts, 0.05f, 10.0f, "%.2fx",
 					ImGuiSliderFlags_Logarithmic))
 				{
 					GameUtil::Cbuf_AddText(LOCAL_CLIENT_0,

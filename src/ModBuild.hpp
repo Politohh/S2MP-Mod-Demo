@@ -28,7 +28,8 @@
 //   8  skip-back: seed snap.serverTime BEFORE the jump -- the rewind WORKS
 //   9  stopped forcing the clock; repeat pass (regressed: force still ran on a failed pass)
 //  10  never force inside the loop -- the ~1.5s rewind budget is a hard engine limit
+//  11  restart+fast-forward for long seeks (MW3 route), exact-tick landing, 10x speed
 namespace mod_build
 {
-	constexpr int NUMBER = 10;
+	constexpr int NUMBER = 11;
 }

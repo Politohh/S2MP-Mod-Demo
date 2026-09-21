@@ -36,7 +36,7 @@ namespace demo_timescale
 		// own PlaybackData+28. See demo_native::set_timescale, which carries the
 		// same floor for the same reason.
 		constexpr float MIN_SCALE = 0.05f;
-		constexpr float MAX_SCALE = 8.0f;
+		constexpr float MAX_SCALE = 10.0f;
 
 		// Matches MIN_SCALE. Kept as its own name because the audio path clamps for
 		// a DIFFERENT reason -- the mixer applies its base-pitch clamp before this
