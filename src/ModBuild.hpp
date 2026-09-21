@@ -25,8 +25,9 @@
 //   5  build number in the log and on the zip
 //   6  skip-back: prefer keyframes the engine has a baseline for (REFUTED)
 //   7  skip-back via CL_Demo_JumpToStart_f (replay runs, clock does not follow)
-//   8  skip-back: seed snap.serverTime BEFORE the jump (Caball009 inversion)
+//   8  skip-back: seed snap.serverTime BEFORE the jump -- the rewind WORKS
+//   9  stop force-setting the clock after it; repeat the ~1.5s jump to reach the target
 namespace mod_build
 {
-	constexpr int NUMBER = 8;
+	constexpr int NUMBER = 9;
 }

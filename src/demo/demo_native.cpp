@@ -469,7 +469,7 @@ namespace demo_native
 			return moved;
 		}
 
-		void jump_to_slot(const int index)
+		int jump_to_slot(const int index)
 		{
 			const auto baseline = reinterpret_cast<int(__fastcall*)(unsigned int, int)>(
 				_b(ADDR_GET_BASELINE));
@@ -673,7 +673,21 @@ namespace demo_native
 			//      6345 snap.serverTime   6365 oldFrameServerTime
 			//      6368 serverTime        6369 oldServerTime
 			//      6370 serverTimeDelta
-			if (g_force_seek_clock)
+			// ⛔ DO NOT FORCE THE CLOCK WHEN THE ENGINE ALREADY REBASED IT.
+			// Build 8 log: the pre-seed worked -- "snapT -1500 THE CLOCK WENT BACK,
+			// cursor -69491" -- and then this force slammed the clock to the keyframe
+			// time anyway, leaving the clock at 33850 with the stream at ~51050.
+			// That mismatch IS the freeze, and the user saw exactly it: "the timer in
+			// the HUD skips back to the correct time, but visibly the demo is frozen".
+			// The force was a workaround for a rewind that was not happening; now that
+			// it happens, the workaround is the bug.
+			const bool engine_rebased = (s_jumped < s_before - 500);
+			if (engine_rebased)
+			{
+				Console::printf("[demo]   leaving the clock where the engine put it (%d ms) "
+					"-- forcing it here is what used to freeze playback", t_jumped);
+			}
+			if (g_force_seek_clock && !engine_rebased)
 			{
 				const int kf_time = slot_i32(index, 8);
 				const auto ca = reinterpret_cast<std::uint8_t*>(
@@ -708,6 +722,7 @@ namespace demo_native
 					"the whole clock from it, so CL_SetCGameTime replays straight back to "
 					"now. The keyframe payload restored no snapshot.");
 			}
+			return current_demo_time();
 		}
 
 		void dump_playback_state(const char* when)
@@ -5335,11 +5350,53 @@ namespace demo_native
 					"landing on %d ms", target, pick_time);
 				target = pick_time;
 			}
-			jump_to_slot(pick);
+			// =============================================================
+			//  ONE JUMP IS NOT ENOUGH -- IT REWINDS ~1.5 s, NOT TO THE KEYFRAME
+			// =============================================================
+			// Build 8 log, every successful jump:
+			//     snapT -1500, cursor -69491
+			// 69491 bytes at ~2300 per 50 ms frame is ~30 snapshots -- exactly the
+			// 1500 ms. It lands there whatever keyframe we name, and never at the
+			// slot's own fileOff. So ProcessKeyFrameJump rewinds by what is in the
+			// in-memory replay buffer, which holds about a second and a half. It is
+			// not a seek to an arbitrary time and never was.
+			//
+			// It IS repeatable though, so run it until we are at or before the
+			// target. ~1.5 s per pass makes a 10 s rewind about 7 passes.
+			//
+			// Two stops, both needed: progress (a pass that gains nothing means the
+			// buffer is exhausted and further passes are just cost), and a hard cap
+			// so a far-back target cannot spin the client thread for a whole frame.
+			constexpr int MAX_JUMP_PASSES = 40;
+			int landed = now;
+			int passes = 0;
+			for (; passes < MAX_JUMP_PASSES; ++passes)
+			{
+				const int before_pass = landed;
+				landed = jump_to_slot(pick);
+				if (landed < 0)
+				{
+					landed = before_pass;
+					break;
+				}
+				if (landed <= target)
+				{
+					break;              // at or before it: the forward skip finishes the job
+				}
+				if (landed >= before_pass - 10)
+				{
+					Console::printf("[demo] seek: the rewind buffer is exhausted at %d ms "
+						"(wanted %d). This engine only keeps about 1.5 s of rewind per pass, "
+						"so anything further back needs the demo restarted.", landed, target);
+					break;
+				}
+			}
+			Console::printf("[demo] seek: %d rewind pass(es) -> %d ms (target %d)",
+				passes + 1, landed, target);
 			// ProcessKeyFrameJump repositioned the file and cleared the engine's
 			// completed flag (PlaybackData[8] = 0), so reading is legitimate again.
 			g_eof_seen = false;
-			now = demo_time_smooth();
+			now = (landed >= 0) ? landed : demo_time_smooth();
 			if (now < 0)
 			{
 				now = pick_time;
