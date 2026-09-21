@@ -746,12 +746,11 @@ namespace demo_gui
 			{
 				float ts = demo_player::timescale();
 				ImGui::SetNextItemWidth(200.0f);
-				// LOGARITHMIC, not linear. The range now reaches 0.01 (1/100), and on
-				// a linear track everything from 0.01 to 0.1 would share 2% of the
-				// width -- i.e. the slow-motion end, which is the whole reason for
-				// the lower floor, would be unpickable. Log scaling gives each
+				// LOGARITHMIC, not linear. 0.05 to 4.0 is a 80:1 range, so on a linear
+				// track the whole slow-motion end would be squeezed into a few pixels
+				// -- and that end is the one used for filming. Log scaling gives each
 				// halving of speed the same travel.
-				if (ImGui::SliderFloat("Speed", &ts, 0.01f, 4.0f, "%.2fx",
+				if (ImGui::SliderFloat("Speed", &ts, 0.05f, 4.0f, "%.2fx",
 					ImGuiSliderFlags_Logarithmic))
 				{
 					GameUtil::Cbuf_AddText(LOCAL_CLIENT_0,

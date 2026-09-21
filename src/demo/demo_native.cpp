@@ -4748,17 +4748,15 @@ namespace demo_native
 		if (!g) { return; }
 		auto* p = reinterpret_cast<float*>(g + 28);
 		if (!readable(p, sizeof(float))) { return; }
-		// 2026-09-21: floor lowered 0.1 -> 0.01 on request (1/100 speed).
-		// ⚠ THE OLD 0.1 WAS LABELLED "the engine's own clamp" BUT NEVER PROVEN --
-		// it matches the range the engine's own up/down-arrow control offers, which
-		// is not the same as the engine REFUSING a lower value. So we now write what
-		// was asked and check whether it survived, rather than pre-clamping to a
-		// limit that may not exist.
-		// The read-back below only catches an INSTANT rejection (a mirrored or
-		// write-protected field). If the engine instead clamps where it CONSUMES
-		// this value, the field still reads 0.01 and only the picture will tell --
-		// which is why demo_speed prints the value it actually left behind.
-		if (v < 0.01f) { v = 0.01f; }
+		// 0.05, USER-MEASURED 2026-09-21. The old 0.1 was labelled "the engine's own
+		// clamp" but never proven; lowering it showed the engine DOES accept less
+		// than 0.1, and that playback goes visibly laggy below 0.05. So the floor is
+		// now where the footage holds up, which is a different and better reason
+		// than the one it had.
+		// The read-back below catches an INSTANT rejection (a mirrored or
+		// write-protected field). A clamp applied where the engine CONSUMES this
+		// value would not show here -- only the picture would tell.
+		if (v < 0.05f) { v = 0.05f; }
 		if (v > 4.0f) { v = 4.0f; }     // the engine's own clamp
 		*p = v;
 		if (const float got = *p; got != v)

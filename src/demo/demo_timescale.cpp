@@ -28,22 +28,20 @@ namespace demo_timescale
 		// load-bearing: 0 would freeze playback outright and 1000 would drain the
 		// demo file in a handful of frames.
 		//
-		// 2026-09-21: floor lowered 0.05 -> 0.01 (1/100 speed) on request, for
-		// ramp and impact shots. Safe for the CUSTOM theater because advance_clock()
-		// integrates wall_delta * scale into our own clock, and scale_lui_delta's
-		// per-stream `carry` already accumulates sub-millisecond remainders -- at
-		// 0.01 a 16 ms frame contributes 0.16 ms, which is exactly what that carry
-		// was written for, just exercised more often.
+		// ⭐ 0.05 IS A MEASURED FLOOR, NOT A GUESS. It was briefly lowered to 0.01
+		// on request (2026-09-21); user-tested the same day: 0.05 plays cleanly,
+		// anything below it "gets super laggy". So the floor is back at 0.05, now
+		// with a reason attached rather than an arbitrary constant.
 		// ⛔ NATIVE playback does NOT take its speed from here: that is the engine's
-		// own PlaybackData+28. See demo_native::set_timescale for its own floor.
-		constexpr float MIN_SCALE = 0.01f;
+		// own PlaybackData+28. See demo_native::set_timescale, which carries the
+		// same floor for the same reason.
+		constexpr float MIN_SCALE = 0.05f;
 		constexpr float MAX_SCALE = 8.0f;
 
-		// The audio pitch multiplier keeps the OLD 0.05 floor, deliberately.
-		// Pitching every voice down 100x is inaudible rumble, and the mixer applies
-		// its own base-pitch clamp BEFORE this multiplier (see effective_audio_scale),
-		// so handing it 0.01 is untested territory for no audible gain. Slow motion
-		// below 1/20 speed simply holds 1/20 pitch.
+		// Matches MIN_SCALE. Kept as its own name because the audio path clamps for
+		// a DIFFERENT reason -- the mixer applies its base-pitch clamp before this
+		// multiplier -- so if the playback floor ever moves again, this one should
+		// be re-argued rather than dragged along with it.
 		constexpr float MIN_AUDIO_SCALE = 0.05f;
 
 		// S2 has no Com_TimeScaleMsec symbol (H1/MWR do). Real world speed is driven by:
