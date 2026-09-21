@@ -469,7 +469,7 @@ namespace demo_native
 			return moved;
 		}
 
-		int jump_to_slot(const int index)
+		int jump_to_slot(const int index, const bool allow_force = true)
 		{
 			const auto baseline = reinterpret_cast<int(__fastcall*)(unsigned int, int)>(
 				_b(ADDR_GET_BASELINE));
@@ -687,7 +687,15 @@ namespace demo_native
 				Console::printf("[demo]   leaving the clock where the engine put it (%d ms) "
 					"-- forcing it here is what used to freeze playback", t_jumped);
 			}
-			if (g_force_seek_clock && !engine_rebased)
+			// ⛔ REGRESSION FOUND IN BUILD 9, and this is why allow_force exists.
+			// Pass 1 rewound correctly (snapT -1500). Pass 2 could not rewind --
+			// the buffer was spent -- so engine_rebased was false, THIS force ran,
+			// and it slammed the clock to 33850 with the stream at 47750. That is
+			// the freeze again, rebuilt by the very code meant to stop causing it.
+			// Worse, the loop then read 33850 as "where we landed", believed it had
+			// overshot the target, and stopped. A caller that is iterating must
+			// never get a forced clock back -- it needs the truth to decide.
+			if (allow_force && g_force_seek_clock && !engine_rebased)
 			{
 				const int kf_time = slot_i32(index, 8);
 				const auto ca = reinterpret_cast<std::uint8_t*>(
@@ -5373,7 +5381,7 @@ namespace demo_native
 			for (; passes < MAX_JUMP_PASSES; ++passes)
 			{
 				const int before_pass = landed;
-				landed = jump_to_slot(pick);
+				landed = jump_to_slot(pick, false);   // never force inside the loop
 				if (landed < 0)
 				{
 					landed = before_pass;
@@ -5385,9 +5393,21 @@ namespace demo_native
 				}
 				if (landed >= before_pass - 10)
 				{
-					Console::printf("[demo] seek: the rewind buffer is exhausted at %d ms "
-						"(wanted %d). This engine only keeps about 1.5 s of rewind per pass, "
-						"so anything further back needs the demo restarted.", landed, target);
+					// ⭐ MEASURED, build 9: THE BUFFER IS GOOD FOR ONE PASS, NOT MANY.
+					// Pass 1 gave -1500 ms; pass 2 gave +50 (i.e. nothing) from the same
+					// slot. The rewind does not compound -- ~1.5 s is the whole budget,
+					// which matches what the tester saw: "it skipped back like a second,
+					// but not all the way".
+					//
+					// So this is a hard engine limit, not a tuning problem. Say so in
+					// terms that name the only real route rather than landing short and
+					// letting it look like a bug.
+					Console::printf("[demo] seek: rewound as far as this engine can -- %d ms, "
+						"wanted %d (%.1f s short).", landed, target,
+						static_cast<double>(landed - target) / 1000.0);
+					Console::printf("[demo]   the replay buffer holds about 1.5 s and does not "
+						"refill, so a longer jump back needs the demo restarted and fast-"
+						"forwarded. Playback is left CONSISTENT here rather than frozen.");
 					break;
 				}
 			}
