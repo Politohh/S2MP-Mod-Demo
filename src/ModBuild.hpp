@@ -23,7 +23,8 @@
 //   3  slow motion floor pinned at 0.05, user-measured        (4921a08)
 //   4  probes: does the jump move the file / does roll land   (4fbb140)
 //   5  build number in the log and on the zip
+//   6  skip-back: prefer keyframes the engine has a baseline for
 namespace mod_build
 {
-	constexpr int NUMBER = 5;
+	constexpr int NUMBER = 6;
 }

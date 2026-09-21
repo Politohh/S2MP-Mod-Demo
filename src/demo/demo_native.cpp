@@ -5082,17 +5082,78 @@ namespace demo_native
 					"demo play a few more seconds so the engine writes keyframes.", target);
 				return false;
 			}
-			int pick = -1, pick_time = -1;
+			// ⭐ PREFER A SLOT THE ENGINE HAS A BASELINE FOR. Added 2026-09-21 from
+			// a user log (build 5) in which the jump was proven to be a complete
+			// no-op -- the file cursor never moved toward the slot's own fileOff:
+			//
+			//   jump slot 5: t=43850 fileOff=1905965 ... baseline=-1
+			//     jumped: cursor +2138, wanted fileOff=1905965 -> FILE DID NOT MOVE
+			//
+			// baseline=-1 on every single attempt is the one anomaly visible from
+			// outside, and it matters because (see ADDR_GET_BASELINE above)
+			// KEYFRAMES ARE DELTA-CODED AGAINST A BASELINE. A keyframe whose
+			// baseline has already been overwritten in the ring cannot be
+			// reconstructed, so ProcessKeyFrameJump declining it is exactly the
+			// behaviour we are seeing.
+			//
+			// usable_slots() filters on length and on a non-empty replay range but
+			// has never asked the engine whether it can still resolve the baseline.
+			// This asks, using the engine's own lookup -- the same one jump_to_slot
+			// already calls on the chosen slot, so no new engine surface is touched.
+			//
+			// ⚠ STILL A HYPOTHESIS. If every slot answers -1 the picks are unchanged
+			// and the count below says so, which kills the theory in one line rather
+			// than leaving it to be re-guessed next session.
+			const auto baseline_fn = reinterpret_cast<int(__fastcall*)(unsigned int, int)>(
+				_b(ADDR_GET_BASELINE));
+			const auto lc = static_cast<unsigned int>(LOCAL_CLIENT_0);
+			int with_baseline = 0;
 			for (const auto& s : slots)
 			{
-				if (s.time <= target && s.time > pick_time) { pick = s.index; pick_time = s.time; }
+				if (baseline_fn(lc, s.index) != -1) { ++with_baseline; }
 			}
-			if (pick < 0)
+
+			// Two passes over the same preference order. The first only considers
+			// slots the engine can resolve; the second is the original behaviour,
+			// used when none can, so a seek never gets WORSE than it was.
+			const auto choose = [&](const bool require_baseline, int& out_i, int& out_t)
 			{
+				out_i = -1;
+				out_t = -1;
 				for (const auto& s : slots)
 				{
-					if (pick_time < 0 || s.time < pick_time) { pick = s.index; pick_time = s.time; }
+					if (require_baseline && baseline_fn(lc, s.index) == -1) { continue; }
+					if (s.time <= target && s.time > out_t) { out_i = s.index; out_t = s.time; }
 				}
+				if (out_i < 0)
+				{
+					for (const auto& s : slots)
+					{
+						if (require_baseline && baseline_fn(lc, s.index) == -1) { continue; }
+						if (out_t < 0 || s.time < out_t) { out_i = s.index; out_t = s.time; }
+					}
+				}
+			};
+
+			int pick = -1, pick_time = -1;
+			choose(true, pick, pick_time);
+			const bool used_baseline = (pick >= 0);
+			if (!used_baseline)
+			{
+				choose(false, pick, pick_time);
+			}
+			Console::printf("[demo] seek: %zu usable slot(s), %d with a resolvable "
+				"baseline -> picked slot %d (t=%d)%s",
+				slots.size(), with_baseline, pick, pick_time,
+				used_baseline ? "" : "   <<< NONE had a baseline; the delta-coding "
+				"theory for the no-op jump is WRONG");
+			if (pick < 0)
+			{
+				Console::printf("[demo] seek -> %d ms: no slot could be chosen", target);
+				return false;
+			}
+			if (pick_time > target)
+			{
 				Console::printf("[demo] seek -> %d ms is before the earliest keyframe; "
 					"landing on %d ms", target, pick_time);
 				target = pick_time;
