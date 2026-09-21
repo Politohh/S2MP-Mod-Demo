@@ -368,6 +368,105 @@ namespace demo_native
 		// REPORTS UNCONDITIONALLY (RULE A15). "Rewind does nothing" is otherwise
 		// indistinguishable between: the jump was never called, it was called and
 		// returned without moving the file, or it moved and the clock did not.
+		// =====================================================================
+		//  THE ENGINE'S OWN REWIND -- CL_Demo_JumpToStart_f
+		// =====================================================================
+		//
+		// PROVEN DEAD 2026-09-21, over two user logs (builds 5 and 6):
+		// ProcessKeyFrameJump does NOTHING. The file cursor never moves toward the
+		// slot's own fileOff; across the call it advances by one ordinary frame of
+		// playback and nothing else. The delta-coding/baseline theory was tested in
+		// build 6 and REFUTED -- 0 of 5 slots had a baseline, so baseline=-1 is
+		// simply normal here and never was the cause.
+		//
+		// ⭐ WHAT THE RECORD ALREADY SAID, and what we were not doing.
+		// CLAUDE.md's read of CL_Demo_JumpToStart_f @0x910480:
+		//
+		//     scans slots, index != 0 -> sub_919CE0, else ProcessKeyFrameJump(0)
+		//
+		// The ENGINE calls ProcessKeyFrameJump only in the index == 0 case. For
+		// every other slot it uses sub_919CE0, the reset/replay -- which CLAUDE.md
+		// noted and then set aside ("NOT trusted, not used") because its decompile
+		// is confusing: it memsets the slot ring before the reads. So we have been
+		// calling the engine's special case and expecting its general one.
+		//
+		// Let the engine rewind the way it rewinds itself, then use the forward
+		// skip, which is independently proven to work (cls_realtime += gap, pump).
+		// A backward seek becomes rewind-to-start + skip-forward.
+		//
+		//   CL_Demo_JumpToStart_f  IDA 0x910480 - 0x1000 = 0x90F480
+		//
+		// ⚠ SIGNATURE IS INFERRED: `void __fastcall(unsigned int)`, the
+		// localClientNum shape every other CL_Demo_* entry point here uses. If it is
+		// really void(void) the extra rcx is harmless under the x64 convention, so
+		// the call is safe either way. What would NOT be safe is the address being
+		// wrong -- hence the guards below.
+		constexpr std::size_t ADDR_JUMP_TO_START = 0x90F480;
+
+		// demo_seek_keyframe 1 goes back to the old ProcessKeyFrameJump route.
+		bool g_seek_via_restart = true;
+
+		// LEAF, no C++ objects, so __try/__except is legal. A wrong address becomes
+		// a printed failure instead of killing the session -- this runs on a
+		// tester's machine, not one we can attach a debugger to.
+		[[nodiscard]] bool call_jump_to_start_guarded(const std::uintptr_t fn,
+			const unsigned int client)
+		{
+			__try
+			{
+				reinterpret_cast<void(__fastcall*)(unsigned int)>(fn)(client);
+				return true;
+			}
+			__except (EXCEPTION_EXECUTE_HANDLER)
+			{
+				return false;
+			}
+		}
+
+		// True only when the demo stream actually moved BACKWARDS. That is the only
+		// success worth reporting: the whole problem with the previous primitive is
+		// that it returned cleanly and did nothing.
+		bool rewind_to_start()
+		{
+			const auto fn = _b(ADDR_JUMP_TO_START);
+			if (!readable(reinterpret_cast<const void*>(fn), 16))
+			{
+				Console::printf("[demo] rewind: CL_Demo_JumpToStart_f not readable at %p "
+					"-- refusing to call it", reinterpret_cast<void*>(fn));
+				return false;
+			}
+
+			const auto g = demo_playback_data();
+			const auto cursor_now = [g]() -> std::int32_t
+			{
+				if (!g) { return -1; }
+				const auto* p = reinterpret_cast<const std::int32_t*>(g + 24);
+				return readable(p, 4) ? *p : -1;
+			};
+
+			const int t_before = current_demo_time();
+			const int c_before = cursor_now();
+
+			if (!call_jump_to_start_guarded(fn, static_cast<unsigned int>(LOCAL_CLIENT_0)))
+			{
+				Console::printf("[demo] rewind: CL_Demo_JumpToStart_f FAULTED -- the address is "
+					"wrong for this build. Nothing else was touched.");
+				return false;
+			}
+
+			const int t_after = current_demo_time();
+			const int c_after = cursor_now();
+			const bool moved = (c_after >= 0 && c_before >= 0 && c_after < c_before);
+			Console::printf("[demo] rewind to start: demoT %d -> %d, cursor %d -> %d  (%s)",
+				t_before, t_after, c_before, c_after,
+				moved ? "THE STREAM WENT BACK -- this is the working primitive"
+					  : "cursor did NOT go back; this route is dead too");
+
+			// NOTE: the caller clears g_eof_seen -- it is declared further down this
+			// file than this helper, which sits next to jump_to_slot for readability.
+			return moved;
+		}
+
 		void jump_to_slot(const int index)
 		{
 			const auto baseline = reinterpret_cast<int(__fastcall*)(unsigned int, int)>(
@@ -5075,6 +5174,28 @@ namespace demo_native
 		// Snapshots are 50 ms apart, so anything closer than that is "here".
 		if (target < now - 50)
 		{
+			// ROUTE A -- the engine's own rewind, then skip forward to the target.
+			// Default, because route B below is PROVEN not to move the stream at
+			// all (builds 5 and 6). `demo_seek_keyframe 1` restores the old path.
+			if (g_seek_via_restart)
+			{
+				if (rewind_to_start())
+				{
+					// Land wherever the rewind put us and let the forward skip below
+					// cover the rest. Reading the clock rather than assuming 0: the
+					// engine may stop at its first keyframe instead of the file head.
+					g_eof_seen = false;
+					now = demo_time_smooth();
+					if (now < 0) { now = current_demo_time(); }
+					if (now < 0) { now = 0; }
+					Console::printf("[demo] seek: rewound to %d ms, now skipping forward %d ms",
+						now, target - now);
+					goto forward_skip;
+				}
+				Console::printf("[demo] seek: the engine rewind did not move the stream; "
+					"falling back to the keyframe jump (which has never worked either)");
+			}
+
 			const auto slots = usable_slots();
 			if (slots.empty())
 			{
@@ -5169,6 +5290,7 @@ namespace demo_native
 			}
 		}
 
+	forward_skip:
 		const int gap = target - now;
 		if (gap > 0)
 		{
@@ -6323,6 +6445,29 @@ namespace demo_native
 			g_force_seek_clock = GameUtil::safeStringToInt(args->argv[args->nesting][1]) != 0;
 			Console::printf("[demo] after a keyframe jump, force the clock onto the "
 				"keyframe time: %s", g_force_seek_clock ? "ON" : "OFF");
+		});
+
+		// Test the engine's rewind primitive ON ITS OWN, without a seek around it.
+		GameUtil::addCommand("demo_jump_start", []
+		{
+			if (!g_native_playing)
+			{
+				Console::printf("[demo] jump start: no native demo playing");
+				return;
+			}
+			if (rewind_to_start()) { g_eof_seen = false; }
+		});
+
+		GameUtil::addCommand("demo_seek_keyframe", []
+		{
+			const auto* a = GameUtil::getCmdArgs();
+			if (a && a->argc[a->nesting] >= 2)
+			{
+				g_seek_via_restart = GameUtil::safeStringToInt(a->argv[a->nesting][1]) == 0;
+			}
+			Console::printf("[demo] backward seek route: %s   (demo_seek_keyframe <0|1>)",
+				g_seek_via_restart ? "rewind-to-start + skip forward"
+					: "ProcessKeyFrameJump (proven to do nothing)");
 		});
 
 		GameUtil::addCommand("demo_seek_kf", []   // always: seek_to_time / seek_back queue it
