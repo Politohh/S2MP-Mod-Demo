@@ -24,8 +24,9 @@
 //   4  probes: does the jump move the file / does roll land   (4fbb140)
 //   5  build number in the log and on the zip
 //   6  skip-back: prefer keyframes the engine has a baseline for (REFUTED)
-//   7  skip-back via the engine's own CL_Demo_JumpToStart_f + skip forward
+//   7  skip-back via CL_Demo_JumpToStart_f (replay runs, clock does not follow)
+//   8  skip-back: seed snap.serverTime BEFORE the jump (Caball009 inversion)
 namespace mod_build
 {
-	constexpr int NUMBER = 7;
+	constexpr int NUMBER = 8;
 }

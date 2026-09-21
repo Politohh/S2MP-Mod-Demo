@@ -404,7 +404,9 @@ namespace demo_native
 		constexpr std::size_t ADDR_JUMP_TO_START = 0x90F480;
 
 		// demo_seek_keyframe 1 goes back to the old ProcessKeyFrameJump route.
-		bool g_seek_via_restart = true;
+		// Caball009 inversion: write snap.serverTime BEFORE the jump, not after.
+		bool g_pre_seed_snap = true;
+		bool g_seek_via_restart = false;
 
 		// LEAF, no C++ objects, so __try/__except is legal. A wrong address becomes
 		// a printed failure instead of killing the session -- this runs on a
@@ -543,6 +545,56 @@ namespace demo_native
 			Console::printf("[demo]   before: demoT=%d snapT=%d cursor=%d",
 				t_before, s_before, c_before);
 
+			// =============================================================
+			//  CABALL009'S INVERSION -- seed snap.serverTime BEFORE the jump
+			// =============================================================
+			//
+			// THREE BUILDS MEASURED THE WRONG THING. "FILE DID NOT MOVE" was never
+			// evidence of a no-op: ProcessKeyFrameJump replays from MEMORY, not
+			// from the file --
+			//     clc[+346144] = sub_9191D0    // read from MEMORY
+			//     ...replay slot+32 .. slot+36...
+			//     clc[+346144] = CL_Demo_Read  // back to FILE
+			// -- so the file cursor CANNOT move during the replay, by design. The
+			// cursor check added in build 5 was measuring something that was never
+			// going to happen, and it sent builds 6 and 7 chasing the wrong thing.
+			//
+			// THE TESTER HEARD IT WORKING. On build 7 the match-start announcer
+			// lines played while the picture stayed put. Those are replayed server
+			// commands: the restore IS running. Only the clock fails to follow it.
+			//
+			// WHY THE CLOCK FAILS. ProcessKeyFrameJump's tail is
+			//     v39 = cl.snap.serverTime;
+			//     cl.oldFrameServerTime = cl.serverTime = cls_realtime
+			//         = cl.oldServerTime = v39;
+			//     cl.serverTimeDelta = cl.snap.serverTime - cls_realtime;
+			//     CL_SetCGameTime(client);
+			// It READS snap.serverTime. When the replay does not itself put that
+			// field back, v39 is still NOW, the whole clock is set to NOW, and
+			// CL_SetCGameTime feeds forward again -- measured exactly that:
+			// demoT 57250 -> 57300 across a "rewind".
+			//
+			// So write it BEFORE the call. That is precisely what Caball009's
+			// CoD4-X rewind does: ResetOldClientData WRITES snap.serverTime from
+			// the restore point rather than reading it. The engine's own tail then
+			// rebases the entire clock from the right value, using its own code.
+			//
+			// It is the same field g_force_seek_clock already writes. Only the
+			// ORDER changes -- and the order is the whole bug.
+			if (g_pre_seed_snap)
+			{
+				const int kf = slot_i32(index, 8);
+				const auto ca = reinterpret_cast<std::uint8_t*>(
+					reinterpret_cast<std::uintptr_t(__fastcall*)(unsigned int)>(
+						_b(0x785D0))(cl));
+				if (kf > 0 && ca && readable(ca + 6345 * 4, 4))
+				{
+					*reinterpret_cast<std::int32_t*>(ca + 6345 * 4) = kf;
+					Console::printf("[demo]   pre-seeded snap.serverTime = %d "
+						"(the jump's own tail now rebases the clock from the keyframe)", kf);
+				}
+			}
+
 			if (b != -1 && b != index)
 			{
 				jump(cl, b);
@@ -573,12 +625,16 @@ namespace demo_native
 			const int s_jumped = snap_time();
 			const int c_jumped = cursor();
 			const int want_off = slot_i32(index, 4);
+			(void)want_off;   // kept: the slot's file offset is in the line above
+			// THE CURSOR IS NOT THE VERDICT -- the replay reads from memory, so it
+			// cannot move here. snapT is what decides: the tail rebases the whole
+			// clock from it, so if it did not go back, nothing else will either.
 			Console::printf("[demo]   jumped: demoT=%d snapT=%d cursor=%d   "
-				"(cursor %+d, wanted fileOff=%d -> %s)",
-				t_jumped, s_jumped, c_jumped, c_jumped - c_before, want_off,
-				(want_off >= 0 && c_jumped >= want_off - 4096 && c_jumped <= want_off + 4096)
-					? "THE FILE MOVED"
-					: "FILE DID NOT MOVE -- the engine's jump is a no-op");
+				"(snapT %+d -> %s; cursor %+d, expected to stay put: memory replay)",
+				t_jumped, s_jumped, c_jumped, s_jumped - s_before,
+				(s_jumped < s_before - 500) ? "THE CLOCK WENT BACK"
+					: "clock did NOT go back -- the tail rebased from now",
+				c_jumped - c_before);
 
 			// =============================================================
 			//  FORCE THE CLOCK TO THE KEYFRAME — from Caball009's CoD4-X
@@ -6456,6 +6512,17 @@ namespace demo_native
 				return;
 			}
 			if (rewind_to_start()) { g_eof_seen = false; }
+		});
+
+		GameUtil::addCommand("demo_seek_presnap", []
+		{
+			const auto* a = GameUtil::getCmdArgs();
+			if (a && a->argc[a->nesting] >= 2)
+			{
+				g_pre_seed_snap = GameUtil::safeStringToInt(a->argv[a->nesting][1]) != 0;
+			}
+			Console::printf("[demo] pre-seed snap.serverTime before the jump: %s"
+				"   (demo_seek_presnap <0|1>)", g_pre_seed_snap ? "ON" : "off");
 		});
 
 		GameUtil::addCommand("demo_seek_keyframe", []
