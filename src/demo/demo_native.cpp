@@ -236,7 +236,7 @@ namespace demo_native
 		// Force the clock onto the keyframe's own time after a jump (see
 		// jump_to_slot). Default ON; `demo_seek_forceclock 0` reverts to the
 		// engine's own tail behaviour for comparison.
-		bool g_force_seek_clock = true;
+
 		constexpr std::size_t ADDR_CL_GETLOCALCLIENTACTIVE = 0x785D0;
 
 		struct Slot { int index; int time; int length; };
@@ -469,7 +469,7 @@ namespace demo_native
 			return moved;
 		}
 
-		int jump_to_slot(const int index, const bool allow_force = true)
+		int jump_to_slot(const int index)
 		{
 			const auto baseline = reinterpret_cast<int(__fastcall*)(unsigned int, int)>(
 				_b(ADDR_GET_BASELINE));
@@ -601,122 +601,31 @@ namespace demo_native
 			}
 			jump(cl, index);
 
-			// ⭐ THE MEASUREMENT THAT SEPARATES THE TWO SUSPECTS. Added 2026-09-21
-			// after a user log showed the cursor moving FORWARD ~2300 bytes on every
-			// rewind instead of landing on the slot's own fileOff.
-			//
-			// Until now the "after" line was printed AFTER the clock force below, so
-			// the engine's jump and our force were indistinguishable in the output:
-			// a clock that moved back proved nothing about whether the FILE moved.
-			// This samples the same three values in between, so one press answers:
-			//
-			//   cursor == fileOff   -> the engine seeked; the bug is downstream
-			//   cursor unchanged    -> ProcessKeyFrameJump did NOTHING, and the
-			//                          force alone is what produces the freeze
-			//                          (clock in the past, stream still in the
-			//                          present, engine crawls to catch up)
-			//
-			// ProcessKeyFrameJump's decompile (above) opens with
-			//     sub_9123E0(demoFileHandle, slot.fileOffset, 2)
-			//     PlaybackData[24] = slot.fileOffset
-			// so "cursor unchanged" means it returned before reaching that, and the
-			// next thing to find is its early-out condition.
-			const int t_jumped = current_demo_time();
 			const int s_jumped = snap_time();
 			const int c_jumped = cursor();
-			const int want_off = slot_i32(index, 4);
-			(void)want_off;   // kept: the slot's file offset is in the line above
-			// THE CURSOR IS NOT THE VERDICT -- the replay reads from memory, so it
-			// cannot move here. snapT is what decides: the tail rebases the whole
-			// clock from it, so if it did not go back, nothing else will either.
-			Console::printf("[demo]   jumped: demoT=%d snapT=%d cursor=%d   "
-				"(snapT %+d -> %s; cursor %+d, expected to stay put: memory replay)",
-				t_jumped, s_jumped, c_jumped, s_jumped - s_before,
-				(s_jumped < s_before - 500) ? "THE CLOCK WENT BACK"
-					: "clock did NOT go back -- the tail rebased from now",
-				c_jumped - c_before);
+			Console::printf("[demo] restored: snapshot=%d (delta %+d), cursor=%d (delta %+d)",
+				s_jumped, s_jumped - s_before, c_jumped, c_jumped - c_before);
 
-			// =============================================================
-			//  FORCE THE CLOCK TO THE KEYFRAME — from Caball009's CoD4-X
-			//  Demo Rewinding (Call-of-Duty-4-X-Demo-Rewinding), 2026-08-11
-			// =============================================================
-			//
-			//  ProcessKeyFrameJump's tail derives the whole clock FROM
-			//  cl.snap.serverTime as it stands after the restore:
-			//
-			//      v39 = cl.snap.serverTime;
-			//      cl.oldFrameServerTime = cl.serverTime = cls_realtime
-			//          = cl.oldServerTime = v39;
-			//      cl.serverTimeDelta = cl.snap.serverTime - cls_realtime;
-			//      CL_SetCGameTime(client);
-			//
-			//  So if the restore does not itself put a snapshot back, v39 is
-			//  still NOW, the clock is set to now, and CL_SetCGameTime replays
-			//  straight forward again. Measured exactly that: +50 ms per press
-			//  and the file cursor back where it started.
-			//
-			//  Caball009 inverts it — ResetOldClientData WRITES cl.snap.serverTime
-			//  from the restore point rather than reading it. Same idea here, but
-			//  using the engine's own tail with the value it should have had, so
-			//  nothing is invented: every field below is one ProcessKeyFrameJump
-			//  already writes, and the keyframe's own time (slot+8) is the value
-			//  it was supposed to land on.
-			//
-			//  ⚠ oldServerTime MUST move with the rest. CL_SetCGameTime does
-			//      if (cl.snap.serverTime < cl.oldServerTime) Com_Error(1, "440")
-			//  which CLAUDE.md decodes as exactly that condition — the same error
-			//  Caball009 has to NOP out at 0x45C511 on CoD4. Setting them together
-			//  keeps it satisfied instead of patching it out.
-			//
-			//  clientActive dword indices, all proven and already in the IDB
-			//  comment on CL_SetCGameTime:
-			//      6345 snap.serverTime   6365 oldFrameServerTime
-			//      6368 serverTime        6369 oldServerTime
-			//      6370 serverTimeDelta
-			// ⛔ DO NOT FORCE THE CLOCK WHEN THE ENGINE ALREADY REBASED IT.
-			// Build 8 log: the pre-seed worked -- "snapT -1500 THE CLOCK WENT BACK,
-			// cursor -69491" -- and then this force slammed the clock to the keyframe
-			// time anyway, leaving the clock at 33850 with the stream at ~51050.
-			// That mismatch IS the freeze, and the user saw exactly it: "the timer in
-			// the HUD skips back to the correct time, but visibly the demo is frozen".
-			// The force was a workaround for a rewind that was not happening; now that
-			// it happens, the workaround is the bug.
-			const bool engine_rebased = (s_jumped < s_before - 500);
-			if (engine_rebased)
+			// The restore can update snap.serverTime without updating cl.serverTime.
+			// Build 13's log has snap=323350 but smooth=309200 after the same jump.
+			// Align playback to the ACTUAL snapshot, never to the requested slot time.
+			// Do not edit the snapshot timestamp: it belongs to the restored data.
+			const auto ca_clock = local_client_active(LOCAL_CLIENT_0);
+			auto* realtime = reinterpret_cast<std::int32_t*>(_b(0x1C7D1F0));
+			if (s_jumped >= 0 && ca_clock
+				&& readable(reinterpret_cast<void*>(ca_clock + 6365 * 4), 24)
+				&& readable(realtime, 4))
 			{
-				Console::printf("[demo]   leaving the clock where the engine put it (%d ms) "
-					"-- forcing it here is what used to freeze playback", t_jumped);
-			}
-			// ⛔ REGRESSION FOUND IN BUILD 9, and this is why allow_force exists.
-			// Pass 1 rewound correctly (snapT -1500). Pass 2 could not rewind --
-			// the buffer was spent -- so engine_rebased was false, THIS force ran,
-			// and it slammed the clock to 33850 with the stream at 47750. That is
-			// the freeze again, rebuilt by the very code meant to stop causing it.
-			// Worse, the loop then read 33850 as "where we landed", believed it had
-			// overshot the target, and stopped. A caller that is iterating must
-			// never get a forced clock back -- it needs the truth to decide.
-			if (allow_force && g_force_seek_clock && !engine_rebased)
-			{
-				const int kf_time = slot_i32(index, 8);
-				const auto ca = reinterpret_cast<std::uint8_t*>(
-					reinterpret_cast<std::uintptr_t(__fastcall*)(unsigned int)>(
-						_b(0x785D0))(cl));
-				auto* rt = reinterpret_cast<std::int32_t*>(_b(0x1C7D1F0));
-				if (kf_time > 0 && ca && readable(ca + 6371 * 4, 4) && readable(rt, 4))
-				{
-					const auto fld = [ca](const int i) -> std::int32_t&
-					{
-						return *reinterpret_cast<std::int32_t*>(ca + i * 4);
-					};
-					fld(6345) = kf_time;   // snap.serverTime  <- the one the tail reads
-					fld(6365) = kf_time;   // oldFrameServerTime
-					fld(6368) = kf_time;   // serverTime
-					fld(6369) = kf_time;   // oldServerTime (keeps Com_Error 440 happy)
-					*rt       = kf_time;   // cls_realtime
-					fld(6370) = 0;         // serverTimeDelta = snap - cls_realtime
-					Console::printf("[demo]   clock forced to keyframe t=%d "
-						"(snap/old/serverTime/cls_realtime), delta=0", kf_time);
-				}
+				const auto field = [ca_clock](int n) -> std::int32_t&
+				{ return *reinterpret_cast<std::int32_t*>(ca_clock + n * 4); };
+				const int smooth_before = field(6368);
+				field(6365) = s_jumped;
+				field(6368) = s_jumped;
+				field(6369) = s_jumped;
+				field(6370) = 0;
+				*realtime = s_jumped;
+				Console::printf("[demo] clock alignment: smooth %d -> %d, snapshot %d, slot %d",
+					smooth_before, field(6368), s_jumped, slot_i32(index, 8));
 			}
 
 			Console::printf("[demo]   after : demoT=%d snapT=%d cursor=%d   "
@@ -724,12 +633,7 @@ namespace demo_native
 				current_demo_time(), snap_time(), cursor(),
 				current_demo_time() - t_before, snap_time() - s_before,
 				cursor() - c_before);
-			if (snap_time() > s_before - 1000)
-			{
-				Console::printf("[demo]   snap.serverTime did NOT go back -> the tail sets "
-					"the whole clock from it, so CL_SetCGameTime replays straight back to "
-					"now. The keyframe payload restored no snapshot.");
-			}
+
 			return current_demo_time();
 		}
 
@@ -5465,13 +5369,13 @@ namespace demo_native
 			for (; passes < MAX_JUMP_PASSES; ++passes)
 			{
 				const int before_pass = landed;
-				landed = jump_to_slot(pick, false);   // never force inside the loop
+				landed = jump_to_slot(pick);
 				if (landed < 0)
 				{
 					landed = before_pass;
 					break;
 				}
-				if (landed <= target)
+				if (landed <= target + 5)
 				{
 					break;              // at or before it: the forward skip finishes the job
 				}
@@ -5486,7 +5390,7 @@ namespace demo_native
 					// So this is a hard engine limit, not a tuning problem. Say so in
 					// terms that name the only real route rather than landing short and
 					// letting it look like a bug.
-					Console::printf("[demo] seek: rewound as far as this engine can -- %d ms, "
+					Console::printf("[demo] seek: rewind made no further progress -- %d ms, "
 						"wanted %d (%.1f s short).", landed, target,
 						static_cast<double>(landed - target) / 1000.0);
 					// THE ONLY ROUTE FURTHER BACK. Restart and fast-forward, which is
@@ -5503,8 +5407,7 @@ namespace demo_native
 							return true;   // the poller finishes it after the reload
 						}
 					}
-					Console::printf("[demo]   the replay buffer holds about 1.5 s and does not "
-						"refill. Playback is left CONSISTENT here rather than frozen.");
+					Console::printf("[demo]   requested time was not reached; retaining the actual restored time.");
 					break;
 				}
 			}
@@ -5567,7 +5470,7 @@ namespace demo_native
 			if (landed_ms >= 0)
 			{
 				Console::printf("[demo] seek: landed on %d ms, %+d from the target "
-					"(anything inside %d ms is the same tick)",
+					"(requested tolerance %d ms; visual timing unverified)",
 					landed_ms, landed_ms - target, TICK_TOLERANCE_MS);
 			}
 		}
@@ -6764,18 +6667,9 @@ namespace demo_native
 			seek_absolute_now(target);
 		});
 
-		dev_mode::add_command("demo_seek_forceclock", []
+		GameUtil::addCommand("demo_seek_forceclock", []
 		{
-			auto* args = GameUtil::getCmdArgs();
-			if (!args || args->argc[args->nesting] < 2)
-			{
-				Console::printf("[demo] seek clock force is %s. usage: "
-					"demo_seek_forceclock <0|1>", g_force_seek_clock ? "ON" : "OFF");
-				return;
-			}
-			g_force_seek_clock = GameUtil::safeStringToInt(args->argv[args->nesting][1]) != 0;
-			Console::printf("[demo] after a keyframe jump, force the clock onto the "
-				"keyframe time: %s", g_force_seek_clock ? "ON" : "OFF");
+			Console::printf("[demo] forcing the requested keyframe clock is disabled; clocks follow the actual snapshot.");
 		});
 
 		// Test the engine's rewind primitive ON ITS OWN, without a seek around it.

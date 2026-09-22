@@ -1,4 +1,4 @@
-#include "pch.h"
+﻿#include "pch.h"
 #include "demo/demo_camera.hpp"
 
 #include "Console.hpp"
@@ -139,6 +139,8 @@ namespace demo_camera
 			{
 				return engine;
 			}
+			// Roll must run even when a dolly key overrides the FOV.
+			apply_roll_to_view_axis();
 			if (const float d = fresh_dolly_fov(); d > 0.0f)
 			{
 				return d;
@@ -146,7 +148,6 @@ namespace demo_camera
 			// ROLL rides this hook because it is the one thing we already own that
 			// runs during VIEW SETUP, which is where the axis lives. It is
 			// idempotent, so being called more than once a frame is harmless.
-			apply_roll_to_view_axis();
 			const float o = g_fov_override.load(std::memory_order_relaxed);
 			return (o > 0.0f) ? o : engine;
 		}
@@ -413,9 +414,7 @@ namespace demo_camera
 			}
 			else
 			{
-				Console::printf("[cam]   -> the write lands each frame and the field still "
-					"reads 0 from here, so something downstream zeroes it. Roll has to be "
-					"applied to the view AXIS instead, not to these angles.");
+				Console::printf("[cam]   samples confirm hook activity only; visible roll still needs an in-game check.");
 			}
 		}
 
@@ -634,6 +633,14 @@ namespace demo_camera
 		{
 			return;
 		}
+		// Determine the existing basis orientation before replacing it. AngleVectors
+		// returns right; a renderer may store left instead. Never mirror its basis.
+		const float determinant = axis[0]*(axis[4]*axis[8]-axis[5]*axis[7])
+			- axis[1]*(axis[3]*axis[8]-axis[5]*axis[6])
+			+ axis[2]*(axis[3]*axis[7]-axis[4]*axis[6]);
+		if (!std::isfinite(determinant) || std::fabs(determinant) < 0.5f
+			|| !std::isfinite(ang[0]) || !std::isfinite(ang[1])) { return; }
+		const float lateral_sign = determinant > 0.0f ? -1.0f : 1.0f;
 		// Take pitch and yaw from the engine (the mouse owns them) and substitute
 		// OUR roll, so this composes with normal mouse look instead of fighting it.
 		constexpr float k = 0.01745329252f;   // pi/180
@@ -647,7 +654,13 @@ namespace demo_camera
 		axis[6] = cr * sp * cy + sr * sy;                                     // up
 		axis[7] = cr * sp * sy - sr * cy;
 		axis[8] = cr * cp;
-		g_axis_writes.fetch_add(1, std::memory_order_relaxed);
+		axis[3] *= lateral_sign; axis[4] *= lateral_sign; axis[5] *= lateral_sign;
+		const auto count = g_axis_writes.fetch_add(1, std::memory_order_relaxed);
+		if (count == 0)
+		{
+			Console::printf("[cam] roll axis hook reached: roll %.1f, determinant %.3f, dolly FOV %.1f",
+				g_roll, determinant, fresh_dolly_fov());
+		}
 		g_axis_right_z.store(axis[5], std::memory_order_relaxed);
 	}
 
