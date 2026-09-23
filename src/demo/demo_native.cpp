@@ -5510,6 +5510,15 @@ namespace demo_native
             std::lock_guard lock(g_restart_lock);
             auto stage = g_restart_stage.load();
             if (stage == RestartStage::Idle || stage == RestartStage::Applying) return;
+            static std::uint64_t last_status = 0;
+            const auto now = GetTickCount64();
+            if (now - last_status >= 5000)
+            {
+                last_status = now;
+                Console::printf("[demo] restart-seek #%u waiting: stage=%d native=%d cgame=%d elapsed=%llu ms",
+                    g_restart_id, static_cast<int>(stage), static_cast<int>(g_native_playing.load()),
+                    cgame_active(), static_cast<unsigned long long>(now - g_restart_started));
+            }
             if (GetTickCount64() - g_restart_started > RESTART_GIVE_UP_MS)
             {
                 Console::printf("[demo] restart-seek #%u timed out; requested time was NOT reached", g_restart_id);
@@ -5580,33 +5589,30 @@ namespace demo_native
 
 	void poll_session()
 	{
-		// Drive the restart-seek first: it must keep working across the very
-		// session change this function watches for.
-		poll_restart_seek();
+        // Connection state survives clc teardown. Do not wait for a freed
+        // demoState field to become zero: that strands deferred playback.
+        if (g_native_playing)
+        {
+            const auto* cs = connstate_ptr(LOCAL_CLIENT_0);
+            const int connection = cs && readable(cs, 4) ? *cs : -1;
+            const char* c = clc_native(LOCAL_CLIENT_0);
+            const auto* st = c ? reinterpret_cast<const std::int32_t*>(c + 262752) : nullptr;
+            const int state = st && readable(st, 4) ? *st : -1;
+            if (g_saw_demo_state && ((connection >= 0 && connection < 5) || state == 0))
+            {
+                g_saw_demo_state = false;
+                g_native_playing = false;
+                g_eof_seen = false;
+                Console::printf("[native] demo session ended: connection=%d demoState=%d clc=%p",
+                    connection, state, c);
+            }
+            else if (state == 2 && connection >= 5)
+                g_saw_demo_state = true;
+        }
+        else g_saw_demo_state = false;
 
-		if (!g_native_playing)
-		{
-			g_saw_demo_state = false;
-			return;
-		}
-		const char* c = clc_native(LOCAL_CLIENT_0);
-		const auto* st = c ? reinterpret_cast<const std::int32_t*>(c + 262752) : nullptr;
-		if (!st || !readable(st, 4))
-		{
-			return;
-		}
-		if (*st == 2)
-		{
-			g_saw_demo_state = true;
-			return;
-		}
-		if (g_saw_demo_state)
-		{
-			g_saw_demo_state = false;
-			g_native_playing = false;
-			g_eof_seen = false;
-			Console::printf("[native] demo session ended");
-		}
+        // Observe closure in this same poll, before deferred playback advances.
+        poll_restart_seek();
 	}
 
 	SeekRange seek_range()
