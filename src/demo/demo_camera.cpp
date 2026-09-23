@@ -13,6 +13,7 @@
 #include <atomic>
 #include <cmath>
 #include <cstring>
+#include <intrin.h>
 
 namespace demo_camera
 {
@@ -173,6 +174,38 @@ namespace demo_camera
 			const auto want = reinterpret_cast<std::uintptr_t>(p);
 			return want >= start && want + n <= end;
 		}
+
+        // Build-20 runtime evidence: RVA 0x912EF0 clears cg+0x23F1D4,
+        // then calls AnglesToAxis at 0x912F16 (return 0x912F1B).
+        // Override that exact final free-camera conversion, before downstream
+        // renderer setup. The old FOV-time axis edit happened too late.
+        using AnglesToAxis_t = void(__fastcall*)(const float*, float*);
+        AnglesToAxis_t g_angles_to_axis_orig = nullptr;
+        std::uintptr_t g_freecam_axis_return = 0;
+        bool g_final_roll_hook_ok = false;
+        std::atomic<std::uint64_t> g_final_roll_calls{0};
+        std::atomic<float> g_final_roll_input{0.0f};
+        std::atomic<float> g_final_roll_applied{0.0f};
+
+        void __fastcall angles_to_axis_stub(const float* angles, float* axis)
+        {
+            const auto caller = reinterpret_cast<std::uintptr_t>(_ReturnAddress());
+            if (caller == g_freecam_axis_return && demo_native::native_playing()
+                && demo_native::cgame_active() && !demo_native::seek_in_progress()
+                && demo_native::camera_mode() == 2 && readable(angles, 16)
+                && readable(axis, 36) && std::isfinite(g_roll))
+            {
+                alignas(16) float desired[4];
+                std::memcpy(desired, angles, sizeof(desired));
+                g_final_roll_input.store(desired[2], std::memory_order_relaxed);
+                desired[2] = g_roll;
+                g_angles_to_axis_orig(desired, axis);
+                g_final_roll_applied.store(desired[2], std::memory_order_relaxed);
+                g_final_roll_calls.fetch_add(1, std::memory_order_relaxed);
+                return;
+            }
+            g_angles_to_axis_orig(angles, axis);
+        }
 
 		// -----------------------------------------------------------------
 		//  Repoint ONE instruction's rip-relative operand at a float we own.
@@ -391,7 +424,9 @@ namespace demo_camera
 				g_roll_pre.load(std::memory_order_relaxed),
 				g_roll_post.load(std::memory_order_relaxed),
 				static_cast<unsigned long long>(writes));
-			Console::printf("[cam] HUD-only axis override removed; world roll is unresolved.");
+			Console::printf("[cam] final free-camera axis: hook=%s calls=%llu input=%.1f applied=%.1f (visual test required)",
+                g_final_roll_hook_ok ? "OK" : "OFF", g_final_roll_calls.load(),
+                g_final_roll_input.load(), g_final_roll_applied.load());
 			if (writes == 0)
 			{
 				Console::printf("[cam]   -> 0 writes: the camera hook is NOT running. "
@@ -651,6 +686,24 @@ namespace demo_camera
 	void init()
 	{
 		patch_framing();
+        g_freecam_axis_return = _b(0x911F1B); // runtime RVA 0x912F1B
+        const auto axis_fn = _b(0x75DE10); // runtime RVA 0x75EE10
+        const unsigned char expected[] = {0x48, 0x8B, 0xC4, 0x48, 0x83, 0xEC, 0x58};
+        const auto call_site = g_freecam_axis_return - 5;
+        std::int32_t call_delta = 0;
+        const bool call_readable = readable(reinterpret_cast<const void*>(call_site), 5);
+        if (call_readable)
+            std::memcpy(&call_delta, reinterpret_cast<const void*>(call_site + 1), sizeof(call_delta));
+        const bool caller_matches = call_readable
+            && *reinterpret_cast<const unsigned char*>(call_site) == 0xE8
+            && g_freecam_axis_return + call_delta == axis_fn;
+        if (caller_matches && readable(reinterpret_cast<const void*>(axis_fn), sizeof(expected))
+            && std::memcmp(reinterpret_cast<const void*>(axis_fn), expected, sizeof(expected)) == 0)
+            g_final_roll_hook_ok = Hook::create("AnglesToAxis_final_freecam_roll", axis_fn,
+                &angles_to_axis_stub, &g_angles_to_axis_orig) && g_angles_to_axis_orig != nullptr;
+        Console::printf("[cam] final free-camera roll hook: %s (candidate; demo_roll_probe reports activity)",
+            g_final_roll_hook_ok ? "OK" : "DECLINED");
+
 
 		// RULE A3: a hook is only live when it says so, and a duplicate reports
 		// success with a null trampoline -- so the trampoline is the proof.

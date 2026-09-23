@@ -978,7 +978,7 @@ namespace demo_gui
 				{
 					float* spd = demo_native::freecam_speed();
 					ImGui::SetNextItemWidth(200.0f);
-					ImGui::SliderFloat("Free camera speed", spd, 10.0f, 400.0f, "%.0f");
+					ImGui::SliderFloat("Free camera speed", spd, 0.1f, 400.0f, "%.2f", ImGuiSliderFlags_Logarithmic | ImGuiSliderFlags_AlwaysClamp);
 					ImGui::SameLine();
 					if (ImGui::Button("Reset##freecam"))
 					{
