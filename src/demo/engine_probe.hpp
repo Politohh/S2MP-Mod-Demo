@@ -67,7 +67,13 @@ namespace demo_engine_probe
                 {"CL_Demo_WriteKeyFrame", 0x913790, 0x540},
                 {"CL_Demo_ShouldGenerateKeyFrame", 0x9193A0, 0x200},
                 {"CL_Demo_FreeCameraMove", 0x912AE0, 0x600},
-                {"GetAvailableCommandBufferIndex", 0x4A05C0, 0x300}
+                {"GetAvailableCommandBufferIndex", 0x4A05C0, 0x300},
+                // Follow the restore's packet replay and existing reset path.
+                // Addresses come from build-16 runtime calls / existing source;
+                // names remain descriptive until their full role is verified.
+                {"RestoreReplay_9188C0", 0x9178C0, 0xB00},
+                {"ResetReplay_919CE0", 0x918CE0, 0x700},
+                {"GenerationGate_7DFD0", 0x7CFD0, 0x100}
             };
             int written = 0;
             for (const auto& range : ranges)

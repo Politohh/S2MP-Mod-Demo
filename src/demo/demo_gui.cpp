@@ -987,6 +987,42 @@ namespace demo_gui
 				}
 			}
 
+            // PROBE ONLY: A/B the engine's exposure blending after rewind.
+            // Do not force exposure, gamma, or LightSet tweak overrides.
+            ImGui::Spacing();
+            ImGui::SeparatorText("Exposure test");
+            {
+                const auto name = DvarInterface::toEngineString("r_tonemapBlend");
+                const auto* dvar = Functions::_Dvar_FindVar(name.c_str());
+                const bool supported = dvar && (dvar->type == DVAR_TYPE_BOOL
+                    || dvar->type == DVAR_TYPE_BOOL_SECURE);
+                const bool blend = supported && (dvar->type == DVAR_TYPE_BOOL_SECURE
+                    ? GameUtil::decodeDvarSecureBool(dvar) : dvar->current.enabled);
+                bool instant = supported && !blend;
+                static int last_observed = -2;
+                const int observed = supported ? static_cast<int>(blend) : -1;
+                if (observed != last_observed)
+                {
+                    Console::printf("[exposure-test] observed r_tonemapBlend=%d type=%d (PROBE ONLY)",
+                        observed, dvar ? static_cast<int>(dvar->type) : -1);
+                    last_observed = observed;
+                }
+                ImGui::BeginDisabled(!supported);
+                if (ImGui::Checkbox("Disable exposure blending (test)", &instant))
+                {
+                    const bool queued = GameUtil::Cbuf_AddText(LOCAL_CLIENT_0,
+                        std::format("{} {}", name, instant ? 0 : 1));
+                    Console::printf("[exposure-test] requested r_tonemapBlend=%d command=%s (PROBE ONLY)",
+                        instant ? 0 : 1, queued ? "queued" : "not queued");
+                }
+                ImGui::EndDisabled();
+                if (ImGui::IsItemHovered())
+                    ImGui::SetTooltip("Test for the dark-to-bright transition after rewind.\n"
+                        "Compare the same path with this off and on.\n"
+                        "Uncheck to restore blending. This is not a confirmed lighting fix.");
+                if (!supported) ImGui::TextDisabled("Exposure blending control unavailable.");
+            }
+
 			// ---- HUD --------------------------------------------------------
 			ImGui::Spacing();
 			ImGui::SeparatorText("HUD");

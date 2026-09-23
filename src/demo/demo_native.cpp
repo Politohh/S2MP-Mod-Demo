@@ -52,6 +52,7 @@
 #include "demo/bonecam.hpp"
 
 #include "Console.hpp"
+#include "DvarInterface.hpp"
 #include "demo/demo_library.hpp"
 #include "DevMode.hpp"
 #include "FuncPointers.h"
@@ -5270,6 +5271,18 @@ namespace demo_native
         {
             Console::printf("[demo] a restart-seek is already pending");
             return false;
+        }
+        // PROBE ONLY: record the actual exposure controls on both rewind routes.
+        for (const char* label : {"r_tonemapBlend", "r_tonemapAuto", "r_tonemapUseTweaks"})
+        {
+            const auto name = DvarInterface::toEngineString(label);
+            const auto* dvar = Functions::_Dvar_FindVar(name.c_str());
+            const bool supported = dvar && (dvar->type == DVAR_TYPE_BOOL
+                || dvar->type == DVAR_TYPE_BOOL_SECURE);
+            const int value = !supported ? -1 : (dvar->type == DVAR_TYPE_BOOL_SECURE
+                ? static_cast<int>(GameUtil::decodeDvarSecureBool(dvar)) : static_cast<int>(dvar->current.enabled));
+            Console::printf("[exposure-test] seek target=%d %s=%d type=%d", target, label,
+                value, dvar ? static_cast<int>(dvar->type) : -1);
         }
         struct SeekGuard {
             SeekGuard() { g_sync_seek.store(true); }
