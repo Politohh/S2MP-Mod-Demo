@@ -1,4 +1,5 @@
 #include "pch.h"
+#include <atomic>
 #include "demo/demo_player.hpp"
 
 #include "Console.hpp"
@@ -24,6 +25,7 @@ namespace demo_player
 
 		// A demo asked for while another is still loaded. It is started once the
 		// old one has fully closed -- see play() for why it cannot start at once.
+		std::atomic<bool> g_last_seek_failed{false};
 		std::mutex g_pending_lock;
 		std::string g_pending_name;
 		std::uint64_t g_pending_queued = 0;
@@ -171,7 +173,11 @@ namespace demo_player
 					current_time());
 				return;
 			}
-			seek_absolute(std::atoi(args->argv[args->nesting][1]));
+			if (!seek_absolute(std::atoi(args->argv[args->nesting][1])))
+            {
+                Console::printf("[demo] requested seek failed; not resuming playback.");
+                return;
+            }
 			if (args->argc[args->nesting] >= 3
 				&& _stricmp(args->argv[args->nesting][2], "play") == 0 && paused())
 			{
@@ -551,18 +557,21 @@ namespace demo_player
 	// ONE seek contract for both engines: land on the absolute demo time and
 	// keep the current pause state. Native lands in the same frame; the custom
 	// theater lands over the next few frames and reports the target meanwhile.
-	void seek_absolute(std::int32_t ms)
-	{
-		ms = (std::max)(0, ms);
-		switch (active())
-		{
-		case Kind::Engine: demo_native::seek_absolute_now(ms); break;
-		case Kind::Custom: demo_playback::seek_to(ms); break;
-		default:
-			Console::printf("[demo] nothing is playing.");
-			break;
-		}
-	}
+    bool last_seek_failed() { return g_last_seek_failed.load(std::memory_order_relaxed); }
+
+    bool seek_absolute(std::int32_t ms)
+    {
+        ms = (std::max)(0, ms);
+        bool accepted = false;
+        switch (active())
+        {
+        case Kind::Engine: accepted = demo_native::seek_absolute_now(ms); break;
+        case Kind::Custom: demo_playback::seek_to(ms); accepted = true; break;
+        default: Console::printf("[demo] nothing is playing."); break;
+        }
+        g_last_seek_failed.store(!accepted, std::memory_order_relaxed);
+        return accepted;
+    }
 
 	void seek_relative(std::int32_t ms)
 	{

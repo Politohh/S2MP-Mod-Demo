@@ -75,7 +75,8 @@ namespace demo_player
 	[[nodiscard]] std::int32_t current_time();
 	// Absolute seek; lands on `ms` and keeps the pause state. CLIENT THREAD:
 	// from the GUI, queue `demo_seek_to <ms>` instead.
-	void seek_absolute(std::int32_t ms);
+	bool seek_absolute(std::int32_t ms);
+	[[nodiscard]] bool last_seek_failed();
 	// Positive skips forward, negative rewinds. Both engines honour it the same
 	// way. CLIENT THREAD, like seek_absolute.
 	void seek_relative(std::int32_t ms);

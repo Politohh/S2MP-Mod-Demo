@@ -901,7 +901,7 @@ namespace dolly
 			first_time = g_points.front().time;
 		}
 		seek_and_play(first_time);
-		Console::printf("[dolly] playing from %d ms", first_time);
+		Console::printf("[dolly] requesting playback from first camera at %d ms", first_time);
 		return true;
 	}
 

@@ -16,9 +16,6 @@
 
 namespace demo_camera
 {
-	// Defined below; the CG_CalcFov stub inside the anonymous namespace calls it.
-	void apply_roll_to_view_axis();
-
 	namespace
 	{
 		// ---- addresses (RULE A1: the arithmetic is written out) ---------
@@ -37,9 +34,6 @@ namespace demo_camera
 		constexpr std::uintptr_t CG_FOV_DVAR_LITERAL = 0x11101B8;
 		constexpr std::size_t    CAM_ANGLES_OFF = 2355660;   // pitch, yaw, roll
 		constexpr std::size_t    CAM_ROLL_OFF = CAM_ANGLES_OFF + 8;
-		// refdef view axis -- what the renderer actually consumes. Same literal
-		// theater_camera.cpp and dolly.cpp already use for this block.
-		constexpr std::size_t    CG_REFDEF_VIEW_AXIS = 1993808;   // float[3][3]
 
 		constexpr float STOCK_HEIGHT = 35.0f;
 		constexpr float STOCK_DISTANCE = 85.0f;
@@ -59,9 +53,7 @@ namespace demo_camera
 		std::atomic<float> g_roll_pre{ 0.0f };          // what the mover left
 		std::atomic<float> g_roll_post{ 0.0f };         // what our write left
 		std::atomic<std::uint64_t> g_roll_writes{ 0 };  // times we wrote it
-		std::atomic<std::uint64_t> g_axis_writes{ 0 };  // times we rebuilt the axis
-		std::atomic<float> g_axis_right_z{ 0.0f };      // -sin(roll)*cos(pitch)
-		bool g_roll_via_axis = true;                    // demo_roll_axis 0|1
+
 
 		// -----------------------------------------------------------------
 		//  FIELD OF VIEW — overridden at the engine's FINAL fov function
@@ -139,15 +131,12 @@ namespace demo_camera
 			{
 				return engine;
 			}
-			// Roll must run even when a dolly key overrides the FOV.
-			apply_roll_to_view_axis();
+            // Build 14's axis write here moved HUD projections without rolling
+            // the rendered world. Do not modify the projection axis in this hook.
 			if (const float d = fresh_dolly_fov(); d > 0.0f)
 			{
 				return d;
 			}
-			// ROLL rides this hook because it is the one thing we already own that
-			// runs during VIEW SETUP, which is where the axis lives. It is
-			// idempotent, so being called more than once a frame is harmless.
 			const float o = g_fov_override.load(std::memory_order_relaxed);
 			return (o > 0.0f) ? o : engine;
 		}
@@ -402,11 +391,7 @@ namespace demo_camera
 				g_roll_pre.load(std::memory_order_relaxed),
 				g_roll_post.load(std::memory_order_relaxed),
 				static_cast<unsigned long long>(writes));
-			Console::printf("[cam]   view axis: rebuilt %llu time(s), right.z = %.3f "
-				"(expect about %.3f for %.0f deg of roll)",
-				static_cast<unsigned long long>(g_axis_writes.load(std::memory_order_relaxed)),
-				g_axis_right_z.load(std::memory_order_relaxed),
-				-std::sin(g_roll * 0.01745329252f), g_roll);
+			Console::printf("[cam] HUD-only axis override removed; world roll is unresolved.");
 			if (writes == 0)
 			{
 				Console::printf("[cam]   -> 0 writes: the camera hook is NOT running. "
@@ -582,88 +567,9 @@ namespace demo_camera
 	// covers the case where the view is built from the derived copy after all.
 	// If roll works now, one of the two did it; `demo_roll_probe` prints both
 	// fields so the next session can tell which and delete the other.
-	// ---------------------------------------------------------------------
-	//  ROLL, THIRD ATTEMPT -- BUILD THE VIEW AXIS OURSELVES
-	// ---------------------------------------------------------------------
-	// What two builds of instrumentation established:
-	//   * cl.viewangles[2] holds our roll                    (we write it)
-	//   * the engine's own mover copies it to cg+2355668     ("mover left 20.0")
-	//   * the picture is still perfectly level
-	// So the angles carry roll correctly all the way through the engine's own
-	// plumbing, and whatever builds the VIEW AXIS from them drops the roll term.
-	// Writing those angles a third time cannot help; the axis is the thing the
-	// renderer actually consumes.
-	//
-	// So compute the axis ourselves, from pitch/yaw/roll, and write it. The maths
-	// is the standard CoD AngleVectors -- the same function bonecam already uses
-	// to turn the freecam angles into forward/right/up.
-	//
-	// ⭐ IDEMPOTENT BY CONSTRUCTION, and that is load-bearing. This is called from
-	// the CG_CalcFov hook, which the engine may call several times in a frame.
-	// ROTATING the existing axis would compound into a spin; DERIVING it from the
-	// angles gives the same answer however often it runs.
-	//
-	// ⚠ STILL A HYPOTHESIS: it only works if the axis is read AFTER this point in
-	// the frame. If the engine rebuilds it later, this write is overwritten and
-	// roll stays level -- in which case the next thing to trace is who writes
-	// cg+1993808 last, and that needs the S2 IDB.
-	//
-	//   cg + 1993808  refdef VIEW AXIS  float[3][3]  (forward, right, up)
-	// Same literal theater_camera and dolly already use.
-	void apply_roll_to_view_axis()
-	{
-		if (g_roll == 0.0f || !g_roll_via_axis)
-		{
-			return;                       // stock behaviour, touch nothing
-		}
-		if (!demo_is_playing()
-			|| theater_camera::get_mode() != theater_camera::THEATER_CAMERA_FREECAM)
-		{
-			return;
-		}
-		void* cg = demo_game::cg_globals_for(0);
-		if (!cg)
-		{
-			return;
-		}
-		auto* base = static_cast<char*>(cg);
-		const auto* ang = reinterpret_cast<const float*>(base + CAM_ANGLES_OFF);
-		auto* axis = reinterpret_cast<float*>(base + CG_REFDEF_VIEW_AXIS);
-		if (!readable(ang, 12) || !readable(axis, 36))
-		{
-			return;
-		}
-		// Determine the existing basis orientation before replacing it. AngleVectors
-		// returns right; a renderer may store left instead. Never mirror its basis.
-		const float determinant = axis[0]*(axis[4]*axis[8]-axis[5]*axis[7])
-			- axis[1]*(axis[3]*axis[8]-axis[5]*axis[6])
-			+ axis[2]*(axis[3]*axis[7]-axis[4]*axis[6]);
-		if (!std::isfinite(determinant) || std::fabs(determinant) < 0.5f
-			|| !std::isfinite(ang[0]) || !std::isfinite(ang[1])) { return; }
-		const float lateral_sign = determinant > 0.0f ? -1.0f : 1.0f;
-		// Take pitch and yaw from the engine (the mouse owns them) and substitute
-		// OUR roll, so this composes with normal mouse look instead of fighting it.
-		constexpr float k = 0.01745329252f;   // pi/180
-		const float sp = std::sin(ang[0] * k), cp = std::cos(ang[0] * k);
-		const float sy = std::sin(ang[1] * k), cy = std::cos(ang[1] * k);
-		const float sr = std::sin(g_roll * k), cr = std::cos(g_roll * k);
-		axis[0] = cp * cy;  axis[1] = cp * sy;  axis[2] = -sp;                // forward
-		axis[3] = -sr * sp * cy + cr * sy;                                    // right
-		axis[4] = -sr * sp * sy - cr * cy;
-		axis[5] = -sr * cp;
-		axis[6] = cr * sp * cy + sr * sy;                                     // up
-		axis[7] = cr * sp * sy - sr * cy;
-		axis[8] = cr * cp;
-		axis[3] *= lateral_sign; axis[4] *= lateral_sign; axis[5] *= lateral_sign;
-		const auto count = g_axis_writes.fetch_add(1, std::memory_order_relaxed);
-		if (count == 0)
-		{
-			Console::printf("[cam] roll axis hook reached: roll %.1f, determinant %.3f, dolly FOV %.1f",
-				g_roll, determinant, fresh_dolly_fov());
-		}
-		g_axis_right_z.store(axis[5], std::memory_order_relaxed);
-	}
-
+    // Build 15: the FOV-hook axis experiment was removed after the tester
+    // showed that it moves nametags without rotating the rendered scene.
+    // The angle plumbing below is retained for tracing, not a proven roll fix.
 	void apply_before_camera_move()
 	{
 		if (g_roll == 0.0f)
@@ -759,17 +665,10 @@ namespace demo_camera
 		GameUtil::addCommand("demo_thirdperson", cmd_third);
 		GameUtil::addCommand("demo_roll", cmd_roll);
 		GameUtil::addCommand("demo_roll_probe", cmd_roll_probe);
-		GameUtil::addCommand("demo_roll_axis", []
-		{
-			const auto* a = GameUtil::getCmdArgs();
-			if (a && a->argc[a->nesting] >= 2)
-			{
-				g_roll_via_axis = GameUtil::safeStringToInt(a->argv[a->nesting][1]) != 0;
-			}
-			Console::printf("[cam] roll by rebuilding the view axis: %s"
-				"   (demo_roll_axis <0|1>; 0 reverts to the old angle-only attempt)",
-				g_roll_via_axis ? "ON" : "off");
-		});
+        GameUtil::addCommand("demo_roll_axis", []
+        {
+            Console::printf("[cam] demo_roll_axis disabled: it displaced HUD projections, not the world camera.");
+        });
 		GameUtil::addCommand("demo_screenshot", cmd_screenshot);
 	}
 }

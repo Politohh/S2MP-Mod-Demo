@@ -39,6 +39,7 @@
 // =============================================================================
 
 #include "pch.h"
+#include "demo/seek_policy.hpp"
 #include "demo_native.hpp"
 
 #include "demo/demo_game.hpp"
@@ -5215,7 +5216,7 @@ namespace demo_native
 	// ONE absolute seek, the same contract as the custom theater's seek_to:
 	// land on `target` and keep the current pause state.
 	//   backward: jump to the nearest usable keyframe at or before the target
-	//             (the earliest one if the target is before all of them), then
+	//             (fail without moving if no such keyframe exists), then
 	//   forward:  skip the remainder through the engine's own feed, now.
 	// CLIENT THREAD ONLY (it drives ProcessKeyFrameJump and CL_SetCGameTime).
 	bool seek_absolute_now(int target)
@@ -5304,24 +5305,13 @@ namespace demo_native
 			// Two passes over the same preference order. The first only considers
 			// slots the engine can resolve; the second is the original behaviour,
 			// used when none can, so a seek never gets WORSE than it was.
-			const auto choose = [&](const bool require_baseline, int& out_i, int& out_t)
-			{
-				out_i = -1;
-				out_t = -1;
-				for (const auto& s : slots)
-				{
-					if (require_baseline && baseline_fn(lc, s.index) == -1) { continue; }
-					if (s.time <= target && s.time > out_t) { out_i = s.index; out_t = s.time; }
-				}
-				if (out_i < 0)
-				{
-					for (const auto& s : slots)
-					{
-						if (require_baseline && baseline_fn(lc, s.index) == -1) { continue; }
-						if (out_t < 0 || s.time < out_t) { out_i = s.index; out_t = s.time; }
-					}
-				}
-			};
+            const auto choose = [&](const bool require_baseline, int& out_i, int& out_t)
+            {
+                const auto picked = demo_seek_policy::choose(slots, target,
+                    [&](int index) { return !require_baseline || baseline_fn(lc, index) != -1; });
+                out_i = picked.index;
+                out_t = picked.time;
+            };
 
 			int pick = -1, pick_time = -1;
 			choose(true, pick, pick_time);
@@ -5337,15 +5327,10 @@ namespace demo_native
 				"theory for the no-op jump is WRONG");
 			if (pick < 0)
 			{
-				Console::printf("[demo] seek -> %d ms: no slot could be chosen", target);
+				Console::printf("[demo] seek -> %d ms unavailable: no usable cached keyframe at or before the requested time. Playback was not moved.", target);
 				return false;
 			}
-			if (pick_time > target)
-			{
-				Console::printf("[demo] seek -> %d ms is before the earliest keyframe; "
-					"landing on %d ms", target, pick_time);
-				target = pick_time;
-			}
+
 			// =============================================================
 			//  ONE JUMP IS NOT ENOUGH -- IT REWINDS ~1.5 s, NOT TO THE KEYFRAME
 			// =============================================================
@@ -5476,7 +5461,11 @@ namespace demo_native
 		}
 		Console::printf("[demo] seek %d -> %d ms (landed %d%s)", from, target,
 			demo_time_smooth(), engine_paused() ? ", still paused" : "");
-		return true;
+		const int actual = demo_time_smooth();
+        const bool reached = demo_seek_policy::reached(target, actual);
+        if (!reached)
+            Console::printf("[demo] seek FAILED: requested %d, actual %d; not starting camera playback.", target, actual);
+        return reached;
 	}
 
 	// The native session ends when the ENGINE says so: clc.demoState leaves 2

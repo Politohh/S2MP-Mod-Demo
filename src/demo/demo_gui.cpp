@@ -22,6 +22,7 @@
 
 #include "Console.hpp"
 #include "DevMode.hpp"
+#include "DvarInterface.hpp"
 #include "FuncPointers.h"
 #include "GameUtil.hpp"
 #include "Hook.hpp"
@@ -47,7 +48,6 @@ namespace demo_gui
 {
 	namespace
 	{
-		constexpr int SEEK_STEP_MS = 5000;
 
 		bool g_open = false;
 
@@ -725,15 +725,17 @@ namespace demo_gui
 				ImGui::ProgressBar(prog, ImVec2(-FLT_MIN, 0.0f), ov);
 			}
 
+            if (demo_player::last_seek_failed())
+                ImGui::TextWrapped("Seek failed: requested time was not reached. See console for details.");
 			const bool paused = demo_player::paused();
 			if (ImGui::Button(paused ? "Play##t" : "Pause##t", ImVec2(90, 0)))
 			{
 				GameUtil::Cbuf_AddText(LOCAL_CLIENT_0, "demo_pause");
 			}
 			ImGui::SameLine();
-			if (ImGui::Button("<< 5s", ImVec2(70, 0)))
+			if (ImGui::Button("<< 10s", ImVec2(70, 0)))
 			{
-				GameUtil::Cbuf_AddText(LOCAL_CLIENT_0, "demo_seek -5");
+				GameUtil::Cbuf_AddText(LOCAL_CLIENT_0, "demo_seek -10");
 			}
 			ImGui::SameLine();
 			if (ImGui::Button("5s >>", ImVec2(70, 0)))
@@ -987,7 +989,17 @@ namespace demo_gui
 			ImGui::Spacing();
 			ImGui::SeparatorText("HUD");
 			{
-				bool minimal = demo_native::hud_minimal();
+                const auto draw2d_name = DvarInterface::toEngineString("cg_draw2D");
+                const auto* draw2d = Functions::_Dvar_FindVar(draw2d_name.c_str());
+                bool no_hud = draw2d && !draw2d->current.enabled;
+                ImGui::BeginDisabled(draw2d == nullptr);
+                if (ImGui::Checkbox("No HUD", &no_hud))
+                    GameUtil::Cbuf_AddText(LOCAL_CLIENT_0,
+                        std::format("{} {}", draw2d_name, no_hud ? 0 : 1));
+                ImGui::EndDisabled();
+                if (ImGui::IsItemHovered())
+                    ImGui::SetTooltip("Toggles cg_draw2d. The mod tools remain visible.");
+                bool minimal = demo_native::hud_minimal();
 				if (ImGui::Checkbox("Minimal HUD", &minimal))
 				{
 					demo_native::set_hud_minimal(minimal);
@@ -2572,7 +2584,7 @@ namespace demo_gui
 			if (left != right)
 			{
 				GameUtil::Cbuf_AddText(LOCAL_CLIENT_0,
-					right ? "demo_seek 5" : "demo_seek -5");
+					right ? "demo_seek 5" : "demo_seek -10");
 			}
 
 			// Dollycam: these touch the point list directly rather than going
