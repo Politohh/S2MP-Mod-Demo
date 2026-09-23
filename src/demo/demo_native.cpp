@@ -40,6 +40,7 @@
 
 #include "pch.h"
 #include "demo/seek_policy.hpp"
+#include "demo/engine_probe.hpp"
 #include "demo_native.hpp"
 
 #include "demo/demo_game.hpp"
@@ -3428,6 +3429,9 @@ namespace demo_native
 		bool  g_gen_keyframes = true;
 		DWORD g_last_keyframe_ms = 0;
 		int   g_keyframes_made = 0;
+        unsigned g_keyframe_policy_checks = 0;
+        unsigned g_keyframe_policy_accepts = 0;
+        int g_last_keyframe_read_state = -1;
 		constexpr DWORD KEYFRAME_INTERVAL_MS = 5000;
 		void cl_demo_handle_action_stub(const int client, const int action, const int down)
 		{
@@ -4526,6 +4530,8 @@ namespace demo_native
 		// Fresh keyframe ring per playback.
 		g_last_keyframe_ms = 0;
 		g_keyframes_made = 0;
+        g_keyframe_policy_checks = g_keyframe_policy_accepts = 0;
+        g_last_keyframe_read_state = -1;
 
 		g_playing_path = path;
 		g_playing_body_end = 0;
@@ -5213,6 +5219,50 @@ namespace demo_native
 		bool g_saw_demo_state = false;
 	}
 
+    namespace
+    {
+        // Client-thread only, bounded and throttled. Diagnose rejection without
+        // changing keyframe data or the camera/connection state.
+        void report_seek_cache(const int target)
+        {
+            static ULONGLONG last_report = 0;
+            const auto now = GetTickCount64();
+            if (last_report && now - last_report < 2000) return;
+            last_report = now;
+            Console::printf("[seek-cache] target=%d file=%s reads=%lld lastReadState=%d generated=%d policyChecks=%u policyAccepted=%u",
+                target, g_playing_path.filename().string().c_str(), static_cast<long long>(g_reads),
+                g_last_keyframe_read_state, g_keyframes_made, g_keyframe_policy_checks, g_keyframe_policy_accepts);
+            const auto g = demo_playback_data();
+            if (!g) return;
+            const auto* rec = reinterpret_cast<const std::int32_t*>(g + 2176584);
+            const auto* idx = reinterpret_cast<const std::int32_t*>(g + 2188584);
+            if (!readable(rec, 250 * 48) || !readable(idx, 4)) return;
+            if (*idx < 0 || *idx >= 250)
+            {
+                Console::printf("[seek-cache] invalid write index=%d", *idx);
+                return;
+            }
+            int shown = 0, populated = 0, empty_replay = 0;
+            std::int64_t bytes = 0;
+            for (int k = 0; k < 250; ++k)
+            {
+                const int i = (*idx - k + 250) % 250;
+                const auto* slot = rec + i * 12;
+                if (slot[7] <= 0 || slot[2] < 0) continue;
+                ++populated;
+                bytes += slot[7];
+                if (slot[8] == slot[9]) ++empty_replay;
+                const char* reason = bytes > KEYFRAME_BUFFER_BYTES ? "payload-budget"
+                    : slot[8] == slot[9] ? "empty-replay" : slot[2] > target ? "after-target" : "eligible";
+                if (shown++ < 16)
+                    Console::printf("[seek-cache] slot=%d time=%d fileOff=%d memOff=%d len=%d replay=%d..%d accumulated=%lld reason=%s",
+                        i, slot[2], slot[1], slot[0], slot[7], slot[8], slot[9], static_cast<long long>(bytes), reason);
+            }
+            Console::printf("[seek-cache] writeIndex=%d populated=%d emptyReplay=%d; code export: demo_engine_probe",
+                *idx, populated, empty_replay);
+        }
+    }
+
 	// ONE absolute seek, the same contract as the custom theater's seek_to:
 	// land on `target` and keep the current pause state.
 	//   backward: jump to the nearest usable keyframe at or before the target
@@ -5267,6 +5317,7 @@ namespace demo_native
 			const auto slots = usable_slots();
 			if (slots.empty())
 			{
+                report_seek_cache(target);
 				Console::printf("[demo] seek -> %d ms: nothing to rewind to yet -- let the "
 					"demo play a few more seconds so the engine writes keyframes.", target);
 				return false;
@@ -5323,10 +5374,10 @@ namespace demo_native
 			Console::printf("[demo] seek: %zu usable slot(s), %d with a resolvable "
 				"baseline -> picked slot %d (t=%d)%s",
 				slots.size(), with_baseline, pick, pick_time,
-				used_baseline ? "" : "   <<< NONE had a baseline; the delta-coding "
-				"theory for the no-op jump is WRONG");
+				used_baseline ? "" : " (no eligible baseline-backed slot)");
 			if (pick < 0)
 			{
+                report_seek_cache(target);
 				Console::printf("[demo] seek -> %d ms unavailable: no usable cached keyframe at or before the requested time. Playback was not moved.", target);
 				return false;
 			}
@@ -5970,6 +6021,7 @@ namespace demo_native
 		auto* cs = connstate_ptr(static_cast<int>(local_client_num));
 		const int state = cs ? *cs : -1;
 		++g_reads;
+        g_last_keyframe_read_state = state;
 
 		// ---- keep the keyframe ring fed so seeking works --------------------
 		// See the long note at g_gen_keyframes. The engine gates its own call on
@@ -6016,7 +6068,14 @@ namespace demo_native
 			// keyframe costs ~115 KB â€” so never write them faster than 1 Hz.
 			const bool not_too_soon =
 				(g_last_keyframe_ms == 0) || ((now - g_last_keyframe_ms) >= 1000);
-			if (not_too_soon && should(local_client_num))
+            bool policy_accepts = false;
+            if (not_too_soon)
+            {
+                ++g_keyframe_policy_checks;
+                policy_accepts = should(local_client_num);
+                if (policy_accepts) ++g_keyframe_policy_accepts;
+            }
+			if (policy_accepts)
 			{
 				g_last_keyframe_ms = now;
 				const auto gen = reinterpret_cast<void(*)(unsigned int, int, int)>(0x913790_b);
@@ -6120,6 +6179,11 @@ namespace demo_native
 
 	void init()
 	{
+        GameUtil::addCommand("demo_engine_probe", []
+        {
+            report_seek_cache(demo_time_smooth());
+            demo_engine_probe::write();
+        });
 		refresh();
 
 		Hook::create("Com_Error", reinterpret_cast<void*>(addr_Com_Error()),

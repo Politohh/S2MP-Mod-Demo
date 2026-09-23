@@ -991,11 +991,21 @@ namespace demo_gui
 			{
                 const auto draw2d_name = DvarInterface::toEngineString("cg_draw2D");
                 const auto* draw2d = Functions::_Dvar_FindVar(draw2d_name.c_str());
-                bool no_hud = draw2d && !draw2d->current.enabled;
-                ImGui::BeginDisabled(draw2d == nullptr);
+                // Secure bool storage is encoded; its first byte is not its value.
+                const bool draw2d_supported = draw2d && (draw2d->type == DVAR_TYPE_BOOL
+                    || draw2d->type == DVAR_TYPE_BOOL_SECURE);
+                const bool hud_visible = draw2d_supported && (draw2d->type == DVAR_TYPE_BOOL_SECURE
+                    ? GameUtil::decodeDvarSecureBool(draw2d) : draw2d->current.enabled);
+                bool no_hud = draw2d_supported && !hud_visible;
+                ImGui::BeginDisabled(!draw2d_supported);
                 if (ImGui::Checkbox("No HUD", &no_hud))
-                    GameUtil::Cbuf_AddText(LOCAL_CLIENT_0,
+                {
+                    const bool queued = GameUtil::Cbuf_AddText(LOCAL_CLIENT_0,
                         std::format("{} {}", draw2d_name, no_hud ? 0 : 1));
+                    Console::printf("[hud] No HUD %s: cg_draw2D type=%d, command %s",
+                        no_hud ? "ON" : "OFF", static_cast<int>(draw2d->type),
+                        queued ? "queued" : "not queued");
+                }
                 ImGui::EndDisabled();
                 if (ImGui::IsItemHovered())
                     ImGui::SetTooltip("Toggles cg_draw2d. The mod tools remain visible.");
