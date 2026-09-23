@@ -1,5 +1,6 @@
 #pragma once
 #include "ModBuild.hpp"
+#include "demo/engine_image_policy.hpp"
 #include "Console.hpp"
 #include "game.h"
 #include <filesystem>
@@ -103,4 +104,73 @@ namespace demo_engine_probe
         }
         catch (const std::exception& e) { Console::printf("[engine-probe] failed: %s", e.what()); }
     }
+    // Explicit offline-analysis export. Keep initialized writable sections from
+    // disk; never copy the live .data section or arbitrary process memory.
+    inline void write_image()
+    {
+        try
+        {
+            wchar_t module_path[32768]{};
+            const auto length = GetModuleFileNameW(nullptr, module_path, 32768);
+            if (!length || length >= 32768) return;
+            const std::filesystem::path source(module_path);
+            std::ifstream input(source, std::ios::binary | std::ios::ate);
+            const auto file_size = input.tellg();
+            if (!input || file_size < 4096 || file_size > 512LL * 1024 * 1024)
+            { Console::printf("[engine-image] invalid input size"); return; }
+            std::vector<unsigned char> bytes(static_cast<std::size_t>(file_size));
+            input.seekg(0);
+            if (!input.read(reinterpret_cast<char*>(bytes.data()), bytes.size())) return;
+            const auto* dos = reinterpret_cast<const IMAGE_DOS_HEADER*>(bytes.data());
+            if (dos->e_magic != IMAGE_DOS_SIGNATURE || dos->e_lfanew < 0
+                || static_cast<std::size_t>(dos->e_lfanew) > bytes.size() - sizeof(IMAGE_NT_HEADERS64)) return;
+            auto* nt = reinterpret_cast<IMAGE_NT_HEADERS64*>(bytes.data() + dos->e_lfanew);
+            if (nt->Signature != IMAGE_NT_SIGNATURE || nt->OptionalHeader.Magic != IMAGE_NT_OPTIONAL_HDR64_MAGIC
+                || nt->FileHeader.SizeOfOptionalHeader < sizeof(IMAGE_OPTIONAL_HEADER64)) return;
+            const auto section_offset = static_cast<std::size_t>(dos->e_lfanew) + 24 + nt->FileHeader.SizeOfOptionalHeader;
+            if (section_offset > bytes.size() || nt->FileHeader.NumberOfSections >
+                (bytes.size() - section_offset) / sizeof(IMAGE_SECTION_HEADER)) return;
+            const auto module = reinterpret_cast<std::uintptr_t>(GetModuleHandleW(nullptr));
+            const auto* live_dos = reinterpret_cast<const IMAGE_DOS_HEADER*>(module);
+            const auto* live_nt = reinterpret_cast<const IMAGE_NT_HEADERS64*>(module + live_dos->e_lfanew);
+            if (live_nt->FileHeader.TimeDateStamp != nt->FileHeader.TimeDateStamp
+                || live_nt->OptionalHeader.SizeOfImage != nt->OptionalHeader.SizeOfImage)
+            { Console::printf("[engine-image] disk/runtime image mismatch"); return; }
+            auto* sections = reinterpret_cast<const IMAGE_SECTION_HEADER*>(bytes.data() + section_offset);
+            unsigned copied = 0;
+            for (unsigned i = 0; i < nt->FileHeader.NumberOfSections; ++i)
+            {
+                const auto& section = sections[i];
+                char name[9]{};
+                std::memcpy(name, section.Name, 8);
+                // Only these non-writable image sections are needed for code,
+                // cross references, strings and function boundaries.
+                if (!analysis_section(name, section.Characteristics)) continue;
+                const auto size = static_cast<std::size_t>((std::min)(section.SizeOfRawData, section.Misc.VirtualSize));
+                if (!size) continue;
+                if (!image_range(section.PointerToRawData, size, bytes.size())
+                    || !image_range(section.VirtualAddress, size, nt->OptionalHeader.SizeOfImage)
+                    || !copy_code(bytes.data() + section.PointerToRawData,
+                        reinterpret_cast<const void*>(module + section.VirtualAddress), size))
+                { Console::printf("[engine-image] failed to read section %s; no image written", name); return; }
+                ++copied;
+                Console::printf("[engine-image] copied %s RVA=%X bytes=%zu", name, section.VirtualAddress, size);
+            }
+            if (!copied) { Console::printf("[engine-image] no eligible sections"); return; }
+            // Loaded absolute addresses refer to the ASLR base. This is a mixed
+            // analysis image, NOT an executable for use as a game replacement.
+            nt->OptionalHeader.ImageBase = module;
+            const auto folder = source.parent_path() / "main";
+            std::filesystem::create_directories(folder);
+            const auto output = folder / std::format("s2mp-build-{}-engine.analysis.bin", mod_build::NUMBER);
+            std::ofstream out(output, std::ios::binary | std::ios::trunc);
+            out.write(reinterpret_cast<const char*>(bytes.data()), bytes.size());
+            out.close();
+            if (!out) { Console::printf("[engine-image] output write failed; do not send partial file"); return; }
+            Console::printf("[engine-image] exported %u sections to %s (analysis only; writable data remains from disk)",
+                copied, output.string().c_str());
+        }
+        catch (const std::exception& e) { Console::printf("[engine-image] failed: %s", e.what()); }
+    }
+
 }

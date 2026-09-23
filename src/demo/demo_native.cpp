@@ -6200,6 +6200,7 @@ namespace demo_native
 	void init()
 	{
         GameUtil::addCommand("demo_finish_restart", finish_restart_seek);
+        GameUtil::addCommand("demo_engine_image", [] { demo_engine_probe::write_image(); });
         GameUtil::addCommand("demo_engine_probe", []
         {
             report_seek_cache(demo_time_smooth());
