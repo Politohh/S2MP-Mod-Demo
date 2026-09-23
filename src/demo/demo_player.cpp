@@ -1,4 +1,4 @@
-#include "pch.h"
+﻿#include "pch.h"
 #include <atomic>
 #include "demo/demo_player.hpp"
 
@@ -28,6 +28,9 @@ namespace demo_player
 		std::atomic<bool> g_last_seek_failed{false};
 		std::mutex g_pending_lock;
 		std::string g_pending_name;
+        std::filesystem::path g_pending_path;
+        unsigned g_pending_id = 0;
+        bool g_pending_dispatched = false;
 		std::uint64_t g_pending_queued = 0;
 		std::uint64_t g_pending_clear_since = 0;
 		constexpr std::uint64_t PENDING_SETTLE_MS = 1500;
@@ -173,13 +176,14 @@ namespace demo_player
 					current_time());
 				return;
 			}
-			if (!seek_absolute(std::atoi(args->argv[args->nesting][1])))
+            const bool resume = args->argc[args->nesting] >= 3
+                && _stricmp(args->argv[args->nesting][2], "play") == 0;
+			if (!seek_absolute(std::atoi(args->argv[args->nesting][1]), resume))
             {
                 Console::printf("[demo] requested seek failed; not resuming playback.");
                 return;
             }
-			if (args->argc[args->nesting] >= 3
-				&& _stricmp(args->argv[args->nesting][2], "play") == 0 && paused())
+			if (resume && !demo_native::seek_in_progress() && paused())
 			{
 				toggle_pause();
 			}
@@ -348,10 +352,13 @@ namespace demo_player
 		// order native playback already requires.
 		if (playing())
 		{
-			stop();
+			stop(false);
 			{
 				std::lock_guard<std::mutex> lock(g_pending_lock);
 				g_pending_name = path.filename().string();
+                g_pending_path = path;
+                ++g_pending_id;
+                g_pending_dispatched = false;
 				g_pending_queued = GetTickCount64();
 				g_pending_clear_since = 0;
 			}
@@ -391,8 +398,16 @@ namespace demo_player
 		return false;
 	}
 
-	void stop()
+	void stop(bool cancel_restart)
 	{
+        if (cancel_restart)
+        {
+            demo_native::cancel_restart_seek();
+            std::lock_guard lock(g_pending_lock);
+            g_pending_name.clear();
+            ++g_pending_id;
+            g_pending_dispatched = false;
+        }
 		const bool custom = demo_playback::is_playing();
 		const bool native = demo_native::native_playing();
 		if (custom)
@@ -410,59 +425,64 @@ namespace demo_player
 		}
 	}
 
-	void poll_pending()
-	{
-		std::string name;
-		{
-			std::lock_guard<std::mutex> lock(g_pending_lock);
-			if (g_pending_name.empty())
-			{
-				return;
-			}
-			const auto now = GetTickCount64();
-			if (now - g_pending_queued > PENDING_GIVE_UP_MS)
-			{
-				Console::printf("[demo] gave up waiting for the previous demo to close; "
-					"press Play again for %s", g_pending_name.c_str());
-				g_pending_name.clear();
-				return;
-			}
-			if (playing())
-			{
-				g_pending_clear_since = 0;
-				return;
-			}
-			// Gone. Let the frontend finish coming back before loading again.
-			if (g_pending_clear_since == 0)
-			{
-				g_pending_clear_since = now;
-				return;
-			}
-			if (now - g_pending_clear_since < PENDING_SETTLE_MS)
-			{
-				return;
-			}
-			name = g_pending_name;   // COPY, not move -- see below
-		}
-		// ⛔ DO NOT CLEAR THE PENDING NAME UNTIL THE COMMAND IS ACTUALLY QUEUED.
-		// 2026-09-22: this cleared it first, and when the engine had no free command
-		// buffer during the teardown the command was dropped in silence. The demo
-		// had already been stopped, so the game sat at the main menu with nothing
-		// left to restart it -- reported as "when i press j it just sends me to the
-		// wwii main menu". Cbuf_AddText now reports that, so a drop just means we
-		// try again on the next tick instead of losing the demo.
-		if (!GameUtil::Cbuf_AddText(LOCAL_CLIENT_0, std::format("demo_play \"{}\"", name)))
-		{
-			return;                  // keep it pending; the give-up timer still applies
-		}
-		{
-			std::lock_guard<std::mutex> lock(g_pending_lock);
-			if (g_pending_name == name)
-			{
-				g_pending_name.clear();
-			}
-		}
-	}
+    void poll_pending()
+    {
+        std::lock_guard lock(g_pending_lock);
+        if (g_pending_name.empty()) return;
+        const auto now = GetTickCount64();
+        if (now - g_pending_queued > PENDING_GIVE_UP_MS)
+        {
+            Console::printf("[demo] pending playback timed out: %s", g_pending_name.c_str());
+            g_pending_name.clear();
+            ++g_pending_id;
+            return;
+        }
+        if (g_pending_dispatched) return;
+        if (playing()) { g_pending_clear_since = 0; return; }
+        if (!g_pending_clear_since) { g_pending_clear_since = now; return; }
+        if (now - g_pending_clear_since < PENDING_SETTLE_MS) return;
+        // Keep the request until the client-thread callback consumes it.
+        // Stop can invalidate a queued callback without reopening the demo.
+        if (GameUtil::Cbuf_AddText(LOCAL_CLIENT_0,
+            std::format("demo_play_pending {}", g_pending_id)))
+            g_pending_dispatched = true;
+    }
+
+    namespace
+    {
+        void cmd_play_pending()
+        {
+            const auto* args = GameUtil::getCmdArgs();
+            if (!args || args->argc[args->nesting] < 2) return;
+            std::filesystem::path path;
+            unsigned request_id = 0;
+            {
+                std::lock_guard lock(g_pending_lock);
+                if (!g_pending_dispatched || g_pending_name.empty()
+                    || static_cast<unsigned>(std::strtoul(args->argv[args->nesting][1], nullptr, 10)) != g_pending_id) return;
+                path = g_pending_path;
+                request_id = g_pending_id;
+                g_pending_name.clear();
+                g_pending_dispatched = false;
+            }
+            if (playing())
+            {
+                Console::printf("[demo] deferred play cancelled: another demo is already playing");
+                return;
+            }
+            if (!play(path))
+            {
+                std::lock_guard lock(g_pending_lock);
+                if (g_pending_id == request_id && g_pending_name.empty())
+                {
+                    g_pending_name = path.filename().string();
+                    g_pending_path = path;
+                    g_pending_clear_since = 0;
+                    // Keep the original timeout; do not retry forever.
+                }
+            }
+        }
+    }
 
 	bool paused()
 	{
@@ -555,17 +575,18 @@ namespace demo_player
 	}
 
 	// ONE seek contract for both engines: land on the absolute demo time and
-	// keep the current pause state. Native lands in the same frame; the custom
-	// theater lands over the next few frames and reports the target meanwhile.
+	// keep the current pause state unless resume is requested. Native cached
+	// seeks are synchronous; reload seeks and custom theater complete later.
+    void report_seek_result(bool succeeded) { g_last_seek_failed.store(!succeeded); }
     bool last_seek_failed() { return g_last_seek_failed.load(std::memory_order_relaxed); }
 
-    bool seek_absolute(std::int32_t ms)
+    bool seek_absolute(std::int32_t ms, bool resume_after)
     {
         ms = (std::max)(0, ms);
         bool accepted = false;
         switch (active())
         {
-        case Kind::Engine: accepted = demo_native::seek_absolute_now(ms); break;
+        case Kind::Engine: accepted = demo_native::seek_absolute_now(ms, resume_after); break;
         case Kind::Custom: demo_playback::seek_to(ms); accepted = true; break;
         default: Console::printf("[demo] nothing is playing."); break;
         }
@@ -653,6 +674,7 @@ namespace demo_player
 		// The whole product-level command set. Everything else is developer
 		// mode - see DevMode.hpp.
 		GameUtil::addCommand("demo_play", cmd_play);
+        GameUtil::addCommand("demo_play_pending", cmd_play_pending);
 		GameUtil::addCommand("demo_stop", cmd_stop);
 		GameUtil::addCommand("demo_pause", cmd_pause);
 		GameUtil::addCommand("demo_seek", cmd_seek);

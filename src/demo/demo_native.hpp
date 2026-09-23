@@ -251,7 +251,9 @@ namespace demo_native
 	// The absolute seek itself: keyframe jump if backward, then the exact
 	// remainder through the engine's feed, pause state untouched. CLIENT THREAD
 	// ONLY -- call it from a console command.
-	bool seek_absolute_now(int ms);
+	bool seek_absolute_now(int ms, bool resume_after = false);
+	bool seek_in_progress();
+	void cancel_restart_seek();
 	// Ends the native session once the engine's demoState leaves 2. Once a frame.
 	void poll_session();
 

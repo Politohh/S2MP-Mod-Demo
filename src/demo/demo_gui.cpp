@@ -725,7 +725,9 @@ namespace demo_gui
 				ImGui::ProgressBar(prog, ImVec2(-FLT_MIN, 0.0f), ov);
 			}
 
-            if (demo_player::last_seek_failed())
+            if (demo_native::seek_in_progress())
+                ImGui::TextWrapped("Seeking demo; reloading if the requested time is outside the cache...");
+            else if (demo_player::last_seek_failed())
                 ImGui::TextWrapped("Seek failed: requested time was not reached. See console for details.");
 			const bool paused = demo_player::paused();
 			if (ImGui::Button(paused ? "Play##t" : "Pause##t", ImVec2(90, 0)))

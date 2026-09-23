@@ -60,7 +60,7 @@ namespace demo_player
 	[[nodiscard]] bool playing();
 	bool play(const std::filesystem::path& path);
 	bool play_selected();
-	void stop();
+	void stop(bool cancel_restart = true);
 
 	[[nodiscard]] bool paused();
 	void toggle_pause();
@@ -75,8 +75,9 @@ namespace demo_player
 	[[nodiscard]] std::int32_t current_time();
 	// Absolute seek; lands on `ms` and keeps the pause state. CLIENT THREAD:
 	// from the GUI, queue `demo_seek_to <ms>` instead.
-	bool seek_absolute(std::int32_t ms);
+	bool seek_absolute(std::int32_t ms, bool resume_after = false);
 	[[nodiscard]] bool last_seek_failed();
+	void report_seek_result(bool succeeded);
 	// Positive skips forward, negative rewinds. Both engines honour it the same
 	// way. CLIENT THREAD, like seek_absolute.
 	void seek_relative(std::int32_t ms);

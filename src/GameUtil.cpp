@@ -610,10 +610,11 @@ std::string GameUtil::getStringFromClipboard() {
 bool GameUtil::Cbuf_AddText(LocalClientNum_t localClientNum, const std::string& command) {
     commandTextBuffers = reinterpret_cast<char**>(0xAA754A8_b);
     int bufferIndex = Functions::_GetAvailableCommandBufferIndex();
-    if (bufferIndex == -1) {
-        Console::printf("[Cbuf_AddText] No available command buffer");
-        return false;
-    }
+    // Probe RVA 0x4A15C0 scans two local-client active flags (stride 0x7B8).
+    // It does NOT allocate command buffers. Menus legitimately return -1;
+    // the caller's local client still owns a command text buffer there.
+    if (bufferIndex == -1) bufferIndex = static_cast<int>(localClientNum);
+    if (bufferIndex < 0 || bufferIndex >= 2) return false;
 
     Functions::_Sys_EnterCriticalSection(193);
 
@@ -623,6 +624,10 @@ bool GameUtil::Cbuf_AddText(LocalClientNum_t localClientNum, const std::string& 
     char** commandBuffer = &commandTextBuffers[2 * bufferIndex];
 
     //Console::printf("[Cbuf_AddText] commandBuffer = %p", static_cast<void*>(commandBuffer));
+    if (!isReadablePtr(commandBuffer, 16)) {
+        Functions::_Sys_LeaveCriticalSection(193);
+        return false;
+    }
     uint32_t currentOffset = *(reinterpret_cast<uint32_t*>(commandBuffer) + 3);
     uint32_t bufferSize = *(reinterpret_cast<uint32_t*>(commandBuffer) + 2);
 
@@ -630,7 +635,9 @@ bool GameUtil::Cbuf_AddText(LocalClientNum_t localClientNum, const std::string& 
     size_t commandLength = commandWithNewline.length();
 
     bool queued = false;
-    if (currentOffset + commandLength < bufferSize) {
+    if (*commandBuffer && bufferSize <= 0x100000 && currentOffset <= bufferSize
+        && commandLength < bufferSize - currentOffset
+        && isReadablePtr(*commandBuffer + currentOffset, commandLength + 1)) {
         strcpy_s(&(*commandBuffer)[currentOffset], bufferSize - currentOffset, commandWithNewline.c_str());
         *(reinterpret_cast<uint32_t*>(commandBuffer) + 3) += static_cast<uint32_t>(commandLength);
         queued = true;

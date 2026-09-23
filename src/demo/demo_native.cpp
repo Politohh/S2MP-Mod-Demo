@@ -41,6 +41,7 @@
 #include "pch.h"
 #include "demo/seek_policy.hpp"
 #include "demo/engine_probe.hpp"
+#include "demo/demo_player.hpp"
 #include "demo_native.hpp"
 
 #include "demo/demo_game.hpp"
@@ -80,7 +81,8 @@ namespace demo_native
 
 		// Set by play(), cleared at end-of-stream/abort. Declared here because the
 		// viewmodel watcher and the StreamSync fix (both further down) gate on it.
-		bool g_native_playing = false;
+		std::atomic<bool> g_native_playing{false};
+        std::atomic<unsigned> g_playback_generation{0};
 
 		std::mutex g_err_lock;
 		std::vector<error_record> g_errors;
@@ -4573,7 +4575,12 @@ namespace demo_native
 		// here â€” and whether the demo's teardown frees any of it. If `live` does
 		// not drop between this census and the next, nothing was unloaded.
 		Console::printf("[native] cl_demo_play %s", stem.c_str());
-		GameUtil::Cbuf_AddText(LOCAL_CLIENT_0, std::format("cl_demo_play {}", stem));
+        if (!GameUtil::Cbuf_AddText(LOCAL_CLIENT_0, std::format("cl_demo_play {}", stem)))
+        {
+            g_native_playing = false;
+            return false;
+        }
+        g_playback_generation.fetch_add(1, std::memory_order_release);
 		return true;
 	}
 
@@ -5142,80 +5149,51 @@ namespace demo_native
 		}
 
 
-		// =====================================================================
-		//  RESTART-SEEK -- the MW3 route, and the only one that reaches far back
-		// =====================================================================
-		//
-		// MEASURED over builds 8-10: the engine's own rewind is worth about 1.5 s,
-		// spent in a single pass, and it does not refill. Anything further back is
-		// unreachable through ProcessKeyFrameJump no matter how it is driven.
-		//
-		// The tester confirms this is also how MW3's tools do it: "it just restarts
-		// the demo and then fast forwards it to where the first cam was placed."
-		// Restarting costs a reload, but forward seeking is reliable, so the result
-		// is correct at any distance -- which a dolly needs, because the path is
-		// pinned to demo time and has to replay against the SAME footage.
-		//
-		// ⚠ THE RESTART IS ASYNCHRONOUS AND MUST NOT BE DONE BY HAND. CLAUDE.md
-		// records a crash from demo_player::play() calling stop() then play() --
-		// AV in SV_ChangeMaxClients with SV_SpawnServer on the stack, because the
-		// old map and loopback server were still up. The safe route is the one the
-		// GUI already uses: queue `demo_play "<name>"`, which stops first and defers
-		// the play through demo_player::poll_pending() once playback has really
-		// gone. We ride that rather than inventing a second teardown.
-		//
-		// So this is a small state machine, polled from the Present hook:
-		//   ARMED    -> queued the restart, waiting for playback to come back up
-		//   SEEKING  -> playback is live; queue one absolute seek and finish
-		// The seek itself is queued as a command so it runs on the CLIENT thread,
-		// never here (RULE: engine state is not touched from Present).
-		enum class RestartStage { Idle, Armed, Seeking };
-		RestartStage g_restart_stage = RestartStage::Idle;
-		int g_restart_target = -1;
-		std::string g_restart_name;
-		std::uint64_t g_restart_started = 0;
-		// ⛔ OFF BY DEFAULT AS OF BUILD 13. The restart works in two halves -- stop
-		// the demo, then reopen it -- and the reopen command is handed to an engine
-		// that has NO FREE COMMAND BUFFERS during a teardown. Build 12 made that
-		// failure visible and retried it; the retries failed too (16 of them in the
-		// user's log), so the demo stays closed and the game sits at the menu.
-		//
-		// That is worse than not seeking: it cost the tester a session every time,
-		// and it broke ORDINARY SCRUBBING as well -- "skip back in the demo using
-		// left arrow key also just takes you to the main menu", because the left
-		// arrow is a backward seek like any other.
-		//
-		// Short seeks (within the ~1.45 s rewind budget) work properly and land on
-		// the exact tick, so that is what ships on by default. `demo_seek_restart 1`
-		// re-enables the reload for anyone who wants to try it.
-		bool g_restart_seek_enabled = false;
+        // Reload fallback. The build-16 code probe disproves the previous
+        // "no command buffers" explanation: the selector needs an active client.
+        // GameUtil now uses the supplied client when the menu has none active.
+        enum class RestartStage { Idle, WaitingClose, WaitingPlayback, Queued, Applying };
+        std::atomic<RestartStage> g_restart_stage{RestartStage::Idle};
+        std::mutex g_restart_lock;
+        std::atomic<bool> g_sync_seek{false};
+        int g_restart_target = -1;
+        std::string g_restart_name;
+        std::uint64_t g_restart_started = 0;
+        unsigned g_restart_generation = 0;
+        unsigned g_restart_ready_generation = 0;
+        unsigned g_restart_id = 0;
+        bool g_restart_paused = false;
+        int g_restart_camera = 0;
+        float g_restart_speed = 1.0f;
+        bool g_restart_seek_enabled = true;
+        constexpr std::uint64_t RESTART_GIVE_UP_MS = 60000;
 
-		// Generous: a restart reloads the level. Measured ~3 s on the tester's
-		// machine with zones warm; a cold load or a slower disk can be far worse,
-		// and giving up early would leave a demo playing from 0 with no explanation.
-		constexpr std::uint64_t RESTART_GIVE_UP_MS = 60000;
+        bool begin_restart_seek(const int target, const bool resume_after)
+        {
+            if (g_restart_stage.load() != RestartStage::Idle) return false;
+            std::lock_guard lock(g_restart_lock);
+            if (g_restart_stage.load() != RestartStage::Idle || g_playing_path.empty()) return false;
+            g_restart_name = g_playing_path.stem().string();
+            g_restart_target = (std::max)(0, target);
+            g_restart_paused = !resume_after && engine_paused();
+            g_restart_speed = engine_timescale();
+            g_restart_camera = camera_mode();
+            g_restart_generation = g_playback_generation.load();
+            g_restart_started = GetTickCount64();
+            ++g_restart_id;
+            g_restart_stage.store(RestartStage::WaitingClose);
+            if (!GameUtil::Cbuf_AddText(LOCAL_CLIENT_0,
+                std::format("demo_play \"{}\"", g_restart_name)))
+            {
+                g_restart_stage.store(RestartStage::Idle);
+                return false;
+            }
+            Console::printf("[demo] restart-seek #%u: reopening %s for %d ms, then %s",
+                g_restart_id, g_restart_name.c_str(), g_restart_target,
+                g_restart_paused ? "remain paused" : "play");
+            return true;
+        }
 
-		bool begin_restart_seek(const int target)
-		{
-			if (g_playing_path.empty())
-			{
-				Console::printf("[demo] restart-seek: the playing file is not known, "
-					"so it cannot be reopened");
-				return false;
-			}
-			g_restart_name = g_playing_path.stem().string();
-			g_restart_target = (std::max)(0, target);
-			g_restart_stage = RestartStage::Armed;
-			g_restart_started = GetTickCount64();
-			Console::printf("[demo] restart-seek: reloading %s to reach %d ms "
-				"(the engine's rewind only covers ~1.5 s)",
-				g_restart_name.c_str(), g_restart_target);
-			// demo_play, NOT cl_demo_play: it stops first and defers the reopen until
-			// playback has actually gone. See the crash note above.
-			GameUtil::Cbuf_AddText(LOCAL_CLIENT_0,
-				std::format("demo_play \"{}\"", g_restart_name));
-			return true;
-		}
 		bool g_saw_demo_state = false;
 	}
 
@@ -5269,8 +5247,34 @@ namespace demo_native
 	//             (fail without moving if no such keyframe exists), then
 	//   forward:  skip the remainder through the engine's own feed, now.
 	// CLIENT THREAD ONLY (it drives ProcessKeyFrameJump and CL_SetCGameTime).
-	bool seek_absolute_now(int target)
+    void cancel_restart_seek()
+    {
+        std::lock_guard lock(g_restart_lock);
+        if (g_restart_stage.load() != RestartStage::Idle)
+        {
+            ++g_restart_id; // invalidate a queued completion command
+            g_restart_stage.store(RestartStage::Idle);
+            Console::printf("[demo] restart-seek cancelled by Stop");
+        }
+    }
+
+    bool seek_in_progress()
+    {
+        return g_sync_seek.load() || g_restart_stage.load() != RestartStage::Idle;
+    }
+
+	bool seek_absolute_now(int target, const bool resume_after)
 	{
+        const auto restart_stage = g_restart_stage.load();
+        if (restart_stage != RestartStage::Idle && restart_stage != RestartStage::Applying)
+        {
+            Console::printf("[demo] a restart-seek is already pending");
+            return false;
+        }
+        struct SeekGuard {
+            SeekGuard() { g_sync_seek.store(true); }
+            ~SeekGuard() { g_sync_seek.store(false); }
+        } guard;
 		if (!g_native_playing)
 		{
 			Console::printf("[demo] seek: no native demo playing");
@@ -5318,6 +5322,7 @@ namespace demo_native
 			if (slots.empty())
 			{
                 report_seek_cache(target);
+                if (g_restart_seek_enabled && begin_restart_seek(target, resume_after)) return true;
 				Console::printf("[demo] seek -> %d ms: nothing to rewind to yet -- let the "
 					"demo play a few more seconds so the engine writes keyframes.", target);
 				return false;
@@ -5378,27 +5383,13 @@ namespace demo_native
 			if (pick < 0)
 			{
                 report_seek_cache(target);
+                if (g_restart_seek_enabled && begin_restart_seek(target, resume_after)) return true;
 				Console::printf("[demo] seek -> %d ms unavailable: no usable cached keyframe at or before the requested time. Playback was not moved.", target);
 				return false;
 			}
 
-			// =============================================================
-			//  ONE JUMP IS NOT ENOUGH -- IT REWINDS ~1.5 s, NOT TO THE KEYFRAME
-			// =============================================================
-			// Build 8 log, every successful jump:
-			//     snapT -1500, cursor -69491
-			// 69491 bytes at ~2300 per 50 ms frame is ~30 snapshots -- exactly the
-			// 1500 ms. It lands there whatever keyframe we name, and never at the
-			// slot's own fileOff. So ProcessKeyFrameJump rewinds by what is in the
-			// in-memory replay buffer, which holds about a second and a half. It is
-			// not a seek to an arbitrary time and never was.
-			//
-			// It IS repeatable though, so run it until we are at or before the
-			// target. ~1.5 s per pass makes a 10 s rewind about 7 passes.
-			//
-			// Two stops, both needed: progress (a pass that gains nothing means the
-			// buffer is exhausted and further passes are just cost), and a hard cap
-			// so a far-back target cannot spin the client thread for a whole frame.
+            // Try the cached restore. If it cannot reach the target, reopen
+            // and advance instead of forcing the clock onto stale snapshots.
 			constexpr int MAX_JUMP_PASSES = 40;
 			int landed = now;
 			int passes = 0;
@@ -5417,28 +5408,13 @@ namespace demo_native
 				}
 				if (landed >= before_pass - 10)
 				{
-					// ⭐ MEASURED, build 9: THE BUFFER IS GOOD FOR ONE PASS, NOT MANY.
-					// Pass 1 gave -1500 ms; pass 2 gave +50 (i.e. nothing) from the same
-					// slot. The rewind does not compound -- ~1.5 s is the whole budget,
-					// which matches what the tester saw: "it skipped back like a second,
-					// but not all the way".
-					//
-					// So this is a hard engine limit, not a tuning problem. Say so in
-					// terms that name the only real route rather than landing short and
-					// letting it look like a bug.
 					Console::printf("[demo] seek: rewind made no further progress -- %d ms, "
 						"wanted %d (%.1f s short).", landed, target,
 						static_cast<double>(landed - target) / 1000.0);
-					// THE ONLY ROUTE FURTHER BACK. Restart and fast-forward, which is
-					// what MW3's tools do for exactly this reason. Costs a reload; it
-					// is correct at any distance, which the dolly needs because its
-					// points are pinned to demo time and must replay against the same
-					// footage. Only when we are still meaningfully short -- a fraction
-					// of a second is not worth a level load.
 					constexpr int RESTART_WORTH_IT_MS = 250;
 					if (g_restart_seek_enabled && (landed - target) > RESTART_WORTH_IT_MS)
 					{
-						if (begin_restart_seek(target))
+						if (begin_restart_seek(target, resume_after))
 						{
 							return true;   // the poller finishes it after the reload
 						}
@@ -5514,6 +5490,8 @@ namespace demo_native
 			demo_time_smooth(), engine_paused() ? ", still paused" : "");
 		const int actual = demo_time_smooth();
         const bool reached = demo_seek_policy::reached(target, actual);
+        if (!reached && actual > target + 5 && g_restart_seek_enabled
+            && begin_restart_seek(target, resume_after)) return true;
         if (!reached)
             Console::printf("[demo] seek FAILED: requested %d, actual %d; not starting camera playback.", target, actual);
         return reached;
@@ -5526,55 +5504,78 @@ namespace demo_native
 	// CL_Demo_Play_f actually executing.
 	namespace
 	{
-		// PRESENT THREAD. Queues commands, never touches engine state directly.
-		void poll_restart_seek()
-		{
-			if (g_restart_stage == RestartStage::Idle)
-			{
-				return;
-			}
-			if (GetTickCount64() - g_restart_started > RESTART_GIVE_UP_MS)
-			{
-				Console::printf("[demo] restart-seek: gave up waiting for %s to come back. "
-					"Press Play on it again (F9 -> Demos); the dolly points are still there.",
-					g_restart_name.c_str());
-				g_restart_stage = RestartStage::Idle;
-				return;
-			}
-			if (g_restart_stage == RestartStage::Armed)
-			{
-				// Wait for playback to be back AND for the clock to be real. Seeking
-				// the instant native_playing() flips would land in the gamestate parse,
-				// before there is a snapshot to seek relative to.
-				if (!g_native_playing)
-				{
-					return;
-				}
-				const int t = demo_time_smooth();
-				if (t < 0)
-				{
-					return;
-				}
-				// CLIENT THREAD via the command buffer, and `play` so a demo that
-				// reopened paused does not sit there looking broken.
-				// ⛔ ONLY ADVANCE IF THE COMMAND WAS ACTUALLY QUEUED. A reload is
-				// exactly when the engine runs out of free command buffers, and a
-				// dropped seek here would leave the demo playing from 0 with the
-				// dolly waiting for footage that never arrives.
-				if (!GameUtil::Cbuf_AddText(LOCAL_CLIENT_0,
-					std::format("demo_seek_to {} play", g_restart_target)))
-				{
-					return;                  // stay Armed and try again next frame
-				}
-				g_restart_stage = RestartStage::Seeking;
-				Console::printf("[demo] restart-seek: playback is back at %d ms, "
-					"fast-forwarding to %d ms", t, g_restart_target);
-				return;
-			}
-			// Seeking: the command is queued and does its own trim-to-tick and
-			// reporting, so there is nothing left to chase.
-			g_restart_stage = RestartStage::Idle;
-		}
+        // Present only observes lifecycle state and queues a client-thread command.
+        void poll_restart_seek()
+        {
+            std::lock_guard lock(g_restart_lock);
+            auto stage = g_restart_stage.load();
+            if (stage == RestartStage::Idle || stage == RestartStage::Applying) return;
+            if (GetTickCount64() - g_restart_started > RESTART_GIVE_UP_MS)
+            {
+                Console::printf("[demo] restart-seek #%u timed out; requested time was NOT reached", g_restart_id);
+                demo_player::report_seek_result(false);
+                g_restart_stage.store(RestartStage::Idle);
+                return;
+            }
+            if (stage == RestartStage::WaitingClose)
+            {
+                if (!g_native_playing)
+                {
+                    g_restart_stage.store(RestartStage::WaitingPlayback);
+                    Console::printf("[demo] restart-seek #%u: old session closed", g_restart_id);
+                }
+                return;
+            }
+            if (stage != RestartStage::WaitingPlayback || !g_native_playing || !cgame_active()
+                || g_playback_generation.load() == g_restart_generation || demo_time_smooth() < 0) return;
+            const char* c = clc_native(LOCAL_CLIENT_0);
+            if (!c || !readable(c + 262752, 4)
+                || *reinterpret_cast<const int*>(c + 262752) != 2) return;
+            if (g_playing_path.stem().string() != g_restart_name)
+            {
+                Console::printf("[demo] restart-seek cancelled: a different demo was opened");
+                g_restart_stage.store(RestartStage::Idle);
+                return;
+            }
+            if (GameUtil::Cbuf_AddText(LOCAL_CLIENT_0,
+                std::format("demo_finish_restart {}", g_restart_id)))
+            {
+                g_restart_ready_generation = g_playback_generation.load();
+                g_restart_stage.store(RestartStage::Queued);
+                Console::printf("[demo] restart-seek #%u: new session ready at %d; seek queued",
+                    g_restart_id, demo_time_smooth());
+            }
+        }
+
+        void finish_restart_seek()
+        {
+            std::lock_guard lock(g_restart_lock);
+            const auto* args = GameUtil::getCmdArgs();
+            if (!args || args->argc[args->nesting] < 2
+                || static_cast<unsigned>(std::strtoul(args->argv[args->nesting][1], nullptr, 10)) != g_restart_id
+                || g_restart_stage.load() != RestartStage::Queued) return;
+            if (!g_native_playing || !cgame_active()
+                || g_playback_generation.load() != g_restart_ready_generation
+                || g_playing_path.stem().string() != g_restart_name)
+            {
+                Console::printf("[demo] restart-seek completion cancelled: session changed");
+                demo_player::report_seek_result(false);
+                g_restart_stage.store(RestartStage::Idle);
+                return;
+            }
+            g_restart_stage.store(RestartStage::Applying);
+            if (!engine_paused()) toggle_pause();
+            const bool reached = seek_absolute_now(g_restart_target, false);
+            set_timescale(g_restart_speed);
+            if (g_restart_camera >= 0) set_camera_mode(g_restart_camera);
+            if (reached && engine_paused() != g_restart_paused) toggle_pause();
+            Console::printf("[demo] restart-seek #%u %s: requested=%d actual=%d paused=%d",
+                g_restart_id, reached ? "completed" : "FAILED (left paused)",
+                g_restart_target, demo_time_smooth(), engine_paused());
+            demo_player::report_seek_result(reached);
+            g_restart_stage.store(RestartStage::Idle);
+        }
+
 	}
 
 	void poll_session()
@@ -6179,6 +6180,7 @@ namespace demo_native
 
 	void init()
 	{
+        GameUtil::addCommand("demo_finish_restart", finish_restart_seek);
         GameUtil::addCommand("demo_engine_probe", []
         {
             report_seek_cache(demo_time_smooth());

@@ -536,7 +536,7 @@ namespace dolly
 	{
 		// Same gate as render(), for the same reason: a stale-but-mapped cg would
 		// be WRITTEN here, not just read.
-		if (!g_enabled || !camera_ready() || !demo_native::cgame_active())
+		if (!g_enabled || demo_native::seek_in_progress() || !camera_ready() || !demo_native::cgame_active())
 		{
 			return;
 		}
