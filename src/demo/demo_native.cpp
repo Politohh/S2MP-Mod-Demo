@@ -5153,10 +5153,14 @@ namespace demo_native
         // Reload fallback. The build-16 code probe disproves the previous
         // "no command buffers" explanation: the selector needs an active client.
         // GameUtil now uses the supplied client when the menu has none active.
-        enum class RestartStage { Idle, WaitingClose, WaitingPlayback, Queued, Applying };
+        enum class RestartStage { Idle, WaitingClose, WaitingPlayback, Queued, Applying,
+            WarmingFrame, PauseQueued };
         std::atomic<RestartStage> g_restart_stage{RestartStage::Idle};
         std::mutex g_restart_lock;
         std::atomic<bool> g_sync_seek{false};
+        std::mutex g_seek_render_mutex;
+        unsigned g_restart_warm_frames = 0;
+        unsigned g_restart_ready_frames = 0;
         int g_restart_target = -1;
         std::string g_restart_name;
         std::uint64_t g_restart_started = 0;
@@ -5181,6 +5185,8 @@ namespace demo_native
             g_restart_camera = camera_mode();
             g_restart_generation = g_playback_generation.load();
             g_restart_started = GetTickCount64();
+            g_restart_ready_frames = 0;
+            g_restart_warm_frames = 0;
             ++g_restart_id;
             g_restart_stage.store(RestartStage::WaitingClose);
             if (!GameUtil::Cbuf_AddText(LOCAL_CLIENT_0,
@@ -5264,6 +5270,8 @@ namespace demo_native
         return g_sync_seek.load() || g_restart_stage.load() != RestartStage::Idle;
     }
 
+    std::mutex& seek_render_mutex() { return g_seek_render_mutex; }
+
 	bool seek_absolute_now(int target, const bool resume_after)
 	{
         const auto restart_stage = g_restart_stage.load();
@@ -5284,10 +5292,11 @@ namespace demo_native
             Console::printf("[exposure-test] seek target=%d %s=%d type=%d", target, label,
                 value, dvar ? static_cast<int>(dvar->type) : -1);
         }
-        struct SeekGuard {
-            SeekGuard() { g_sync_seek.store(true); }
-            ~SeekGuard() { g_sync_seek.store(false); }
-        } guard;
+         struct SeekGuard {
+             std::unique_lock<std::mutex> render_lock;
+             SeekGuard() : render_lock(g_seek_render_mutex) { g_sync_seek.store(true); }
+             ~SeekGuard() { g_sync_seek.store(false); }
+         } guard;
 		if (!g_native_playing)
 		{
 			Console::printf("[demo] seek: no native demo playing");
@@ -5522,7 +5531,8 @@ namespace demo_native
         {
             std::lock_guard lock(g_restart_lock);
             auto stage = g_restart_stage.load();
-            if (stage == RestartStage::Idle || stage == RestartStage::Applying) return;
+            if (stage == RestartStage::Idle || stage == RestartStage::Applying
+                || stage == RestartStage::PauseQueued) return;
             static std::uint64_t last_status = 0;
             const auto now = GetTickCount64();
             if (now - last_status >= 5000)
@@ -5539,6 +5549,22 @@ namespace demo_native
                 g_restart_stage.store(RestartStage::Idle);
                 return;
             }
+            if (stage == RestartStage::WarmingFrame)
+            {
+                if (!g_native_playing || !cgame_active()
+                    || g_playback_generation.load() != g_restart_ready_generation)
+                {
+                    Console::printf("[demo] restart-seek #%u lost its new session during render warmup", g_restart_id);
+                    demo_player::report_seek_result(false);
+                    g_restart_stage.store(RestartStage::Idle);
+                    return;
+                }
+                if (++g_restart_warm_frames >= 3
+                    && GameUtil::Cbuf_AddText(LOCAL_CLIENT_0,
+                        std::format("demo_finish_restart_pause {}", g_restart_id)))
+                    g_restart_stage.store(RestartStage::PauseQueued);
+                return;
+            }
             if (stage == RestartStage::WaitingClose)
             {
                 if (!g_native_playing)
@@ -5548,8 +5574,13 @@ namespace demo_native
                 }
                 return;
             }
-            if (stage != RestartStage::WaitingPlayback || !g_native_playing || !cgame_active()
-                || g_playback_generation.load() == g_restart_generation || demo_time_smooth() < 0) return;
+            if (stage != RestartStage::WaitingPlayback) return;
+            if (!g_native_playing || !cgame_active()
+                || g_playback_generation.load() == g_restart_generation || demo_time_smooth() < 0)
+            {
+                g_restart_ready_frames = 0;
+                return;
+            }
             const char* c = clc_native(LOCAL_CLIENT_0);
             if (!c || !readable(c + 262752, 4)
                 || *reinterpret_cast<const int*>(c + 262752) != 2) return;
@@ -5559,6 +5590,9 @@ namespace demo_native
                 g_restart_stage.store(RestartStage::Idle);
                 return;
             }
+            // A live clock can precede the first scene render. Give the new
+            // cgame three Presents before pausing and seeking into it.
+            if (++g_restart_ready_frames < 3) return;
             if (GameUtil::Cbuf_AddText(LOCAL_CLIENT_0,
                 std::format("demo_finish_restart {}", g_restart_id)))
             {
@@ -5590,11 +5624,38 @@ namespace demo_native
             const bool reached = seek_absolute_now(g_restart_target, false);
             set_timescale(g_restart_speed);
             if (g_restart_camera >= 0) set_camera_mode(g_restart_camera);
-            if (reached && engine_paused() != g_restart_paused) toggle_pause();
+            if (reached && g_restart_paused)
+            {
+                // A fresh cgame that is immediately paused after a seek can
+                // stay on its black loading frame. Let it render a few frames
+                // from the landed scene, then restore the user's pause state.
+                if (engine_paused()) toggle_pause();
+                g_restart_warm_frames = 0;
+                g_restart_stage.store(RestartStage::WarmingFrame);
+            }
+            else if (reached && engine_paused()) toggle_pause();
             Console::printf("[demo] restart-seek #%u %s: requested=%d actual=%d paused=%d",
                 g_restart_id, reached ? "completed" : "FAILED (left paused)",
                 g_restart_target, demo_time_smooth(), engine_paused());
             demo_player::report_seek_result(reached);
+            if (g_restart_stage.load() != RestartStage::WarmingFrame)
+                g_restart_stage.store(RestartStage::Idle);
+        }
+
+        void finish_restart_pause()
+        {
+            std::lock_guard lock(g_restart_lock);
+            const auto* args = GameUtil::getCmdArgs();
+            if (!args || args->argc[args->nesting] < 2
+                || static_cast<unsigned>(std::strtoul(args->argv[args->nesting][1], nullptr, 10)) != g_restart_id
+                || g_restart_stage.load() != RestartStage::PauseQueued) return;
+            if (g_native_playing && cgame_active()
+                && g_playback_generation.load() == g_restart_ready_generation)
+            {
+                if (!engine_paused()) toggle_pause();
+                Console::printf("[demo] restart-seek #%u: scene rendered %u frame(s), pause restored at %d ms",
+                    g_restart_id, g_restart_warm_frames, demo_time_smooth());
+            }
             g_restart_stage.store(RestartStage::Idle);
         }
 
@@ -6200,6 +6261,7 @@ namespace demo_native
 	void init()
 	{
         GameUtil::addCommand("demo_finish_restart", finish_restart_seek);
+        GameUtil::addCommand("demo_finish_restart_pause", finish_restart_pause);
         GameUtil::addCommand("demo_engine_image", [] { demo_engine_probe::write_image(); });
         GameUtil::addCommand("demo_engine_probe", []
         {

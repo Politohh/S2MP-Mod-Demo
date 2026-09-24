@@ -286,6 +286,24 @@ namespace dolly
 				+ (-p0 + 3.0f * p1 - 3.0f * p2 + p3) * t3);
 		}
 
+		// A shared velocity at each marker prevents a jolt when neighbouring
+		// camera segments have different durations.
+		[[nodiscard]] float timed_hermite(const float p0, const float p1,
+			const float p2, const float p3, const int t0, const int t1,
+			const int t2, const int t3, const float f)
+		{
+			const float span = static_cast<float>((std::max)(1, t2 - t1));
+			const float left_span = static_cast<float>((std::max)(1, t2 - t0));
+			const float right_span = static_cast<float>((std::max)(1, t3 - t1));
+			const float m1 = (p2 - p0) * span / left_span;
+			const float m2 = (p3 - p1) * span / right_span;
+			const float f2 = f * f, f3 = f2 * f;
+			return (2.0f * f3 - 3.0f * f2 + 1.0f) * p1
+				+ (f3 - 2.0f * f2 + f) * m1
+				+ (-2.0f * f3 + 3.0f * f2) * p2
+				+ (f3 - f2) * m2;
+		}
+
 		// Evaluate the dolly at demo time `t`. Returns false outside the span, so
 		// the camera stays free before the first point and after the last — that
 		// is what makes "fly, add a point, fly on" work as an editing workflow.
@@ -327,7 +345,8 @@ namespace dolly
 
 			for (int a = 0; a < 3; ++a)
 			{
-				out_pos[a] = catmull_rom(p0.pos[a], p1.pos[a], p2.pos[a], p3.pos[a], f);
+				out_pos[a] = timed_hermite(p0.pos[a], p1.pos[a], p2.pos[a], p3.pos[a],
+					p0.time, p1.time, p2.time, p3.time, f);
 			}
 
 			// Angles: unwrap the three neighbours onto p1's branch FIRST, so the
@@ -339,7 +358,8 @@ namespace dolly
 				const float u0 = b + ang_norm180(p0.angles[a] - b);
 				const float u2 = b + ang_norm180(p2.angles[a] - b);
 				const float u3 = b + ang_norm180(p3.angles[a] - b);
-				out_ang[a] = catmull_rom(u0, b, u2, u3, f);
+				out_ang[a] = timed_hermite(u0, b, u2, u3,
+					p0.time, p1.time, p2.time, p3.time, f);
 			}
 
 			// FOV: a spline when both ends are keyed (a neighbour that is not
@@ -643,6 +663,14 @@ namespace dolly
 	// =========================================================================
 	void render()
 	{
+		// A keyframe jump reparses the gamestate on the client thread. The
+		// renderer can start before cgame_active() changes, so take the seek
+		// guard before touching any cg or renderer view data. Never stall R_EndFrame.
+		std::unique_lock seek_lock(demo_native::seek_render_mutex(), std::try_to_lock);
+		if (!seek_lock.owns_lock() || demo_native::seek_in_progress())
+		{
+			return;
+		}
 		// cgame_active() is not belt-and-braces here, it is THE gate: during a
 		// seek the engine's cg is NULL while the back-pointer we derive from is
 		// still set, and that disagreement is what crashed the game.

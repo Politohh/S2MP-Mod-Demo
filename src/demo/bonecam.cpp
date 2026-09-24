@@ -535,7 +535,8 @@ namespace bonecam
 		}
 		// RULE A21: our own validated cg, never one the engine resolves for us.
 		void* cg = demo_game::cg_globals_for(LOCAL_CLIENT);
-		if (!cg || (native && !demo_native::cgame_active()))
+		if (!cg || (native && (!demo_native::cgame_active()
+			|| demo_native::seek_in_progress())))
 		{
 			g_last_fail.store(FAIL_NO_CG, std::memory_order_relaxed);
 			return;

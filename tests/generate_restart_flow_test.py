@@ -51,18 +51,20 @@ struct GameUtil {
  static const Args* getCmdArgs(){return &args;}
 };
 '''
-body='\n'.join(function(n) for n in ['begin_restart_seek','poll_restart_seek','finish_restart_seek','cancel_restart_seek','seek_in_progress','poll_session'])
+body='\n'.join(function(n) for n in ['begin_restart_seek','poll_restart_seek','finish_restart_seek','finish_restart_pause','cancel_restart_seek','seek_in_progress','poll_session'])
 tests=r'''
 void setup(){
  have_clc=true;have_connection=true;g_saw_demo_state=false;g_eof_seen=false;connection=10;
  g_restart_stage=RestartStage::Idle;g_restart_id=0;GameUtil::queued.clear();GameUtil::accept=true;
+ g_restart_ready_frames=g_restart_warm_frames=0;
  g_native_playing=true;ready=true;paused_state=true;seek_ok=true;seek_calls=0;speed=.05f;camera=2;
  time_ms=18000;clock_ms=100;g_playback_generation=7;g_playing_path="test.demo";
  int state=2;std::memcpy(clc+262752,&state,4);args.argv[0][1]="1";demo_player::result=true;
 }
 void ready_new(){
  g_native_playing=false;poll_restart_seek();assert(g_restart_stage==RestartStage::WaitingPlayback);
- g_native_playing=true;g_playback_generation++;time_ms=1000;poll_restart_seek();
+ g_native_playing=true;g_playback_generation++;time_ms=1000;
+ poll_restart_seek();poll_restart_seek();poll_restart_seek();
  assert(g_restart_stage==RestartStage::Queued);
 }
 int main(){
@@ -72,9 +74,13 @@ int main(){
  g_native_playing=true;poll_restart_seek();assert(GameUtil::queued.size()==1); // old generation
  g_playback_generation++;ready=false;poll_restart_seek();assert(GameUtil::queued.size()==1);
  ready=true;GameUtil::accept=false;poll_restart_seek();assert(g_restart_stage==RestartStage::WaitingPlayback);
- GameUtil::accept=true;poll_restart_seek();assert(g_restart_stage==RestartStage::Queued);
+ GameUtil::accept=true;poll_restart_seek();poll_restart_seek();assert(g_restart_stage==RestartStage::Queued);
  finish_restart_seek();assert(!seek_in_progress());assert(time_ms==5000);assert(!paused_state);assert(speed==.05f);assert(camera==2);
- setup();assert(begin_restart_seek(6000,false));ready_new();finish_restart_seek();assert(paused_state&&time_ms==6000);
+ setup();assert(begin_restart_seek(6000,false));ready_new();finish_restart_seek();
+ assert(!paused_state&&time_ms==6000&&seek_in_progress());
+ poll_restart_seek();poll_restart_seek();assert(g_restart_stage==RestartStage::WarmingFrame);
+ poll_restart_seek();assert(g_restart_stage==RestartStage::PauseQueued);
+ finish_restart_pause();assert(paused_state&&!seek_in_progress());
  setup();paused_state=false;assert(begin_restart_seek(6000,false));ready_new();finish_restart_seek();assert(!paused_state);
  setup();GameUtil::accept=false;assert(!begin_restart_seek(5000,true));assert(!seek_in_progress());
  setup();assert(begin_restart_seek(5000,true));assert(!begin_restart_seek(9000,true));ready_new();
@@ -88,7 +94,8 @@ int main(){
  have_clc=false;connection=0;ready=false;poll_session();
  assert(!g_native_playing);assert(g_restart_stage==RestartStage::WaitingPlayback);
  have_clc=true;connection=10;ready=true;g_native_playing=true;++g_playback_generation;
- poll_session();assert(g_restart_stage==RestartStage::Queued);finish_restart_seek();assert(time_ms==5000&&!paused_state);
+ poll_session();poll_session();poll_session();
+ assert(g_restart_stage==RestartStage::Queued);finish_restart_seek();assert(time_ms==5000&&!paused_state);
  // A retained stale demoState=2 must not mask an observed disconnect.
  setup();poll_session();assert(begin_restart_seek(5000,true));connection=0;poll_session();assert(!g_native_playing);
  // Loading has not reached playback yet: missing clc is not a finished session.

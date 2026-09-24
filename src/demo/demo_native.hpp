@@ -14,12 +14,15 @@
 // =============================================================================
 
 #include <filesystem>
+#include <mutex>
 #include <optional>
 #include <string>
 #include <vector>
 
 namespace demo_native
 {
+	// Serializes the dolly marker renderer with synchronous native seeks.
+	std::mutex& seek_render_mutex();
 	void init();
 
 	// main/demo — where the engine keeps its own demos. Not our demos folder.

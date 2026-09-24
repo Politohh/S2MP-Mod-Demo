@@ -2617,6 +2617,9 @@ namespace demo_gui
 
 			if (!transport_hotkeys_allowed())
 			{
+				if (left != right)
+					Console::printf("[demo] %s arrow ignored: transport hotkeys are not active",
+						left ? "left" : "right");
 				return;
 			}
 
@@ -2631,8 +2634,11 @@ namespace demo_gui
 			// client thread rather than running here on Present.
 			if (left != right)
 			{
-				GameUtil::Cbuf_AddText(LOCAL_CLIENT_0,
+				const bool queued = GameUtil::Cbuf_AddText(LOCAL_CLIENT_0,
 					right ? "demo_seek 5" : "demo_seek -10");
+				Console::printf("[demo] %s arrow: %s %s",
+					right ? "right" : "left", queued ? "queued" : "FAILED to queue",
+					right ? "+5 seconds" : "-10 seconds");
 			}
 
 			// Dollycam: these touch the point list directly rather than going
