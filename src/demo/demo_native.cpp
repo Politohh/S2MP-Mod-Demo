@@ -370,53 +370,29 @@ namespace demo_native
 		//     +24 command sequence            +28 length -- the scan needs > 0
 		//     +32/+36 replay message range
 		//
-		// REPORTS UNCONDITIONALLY (RULE A15). "Rewind does nothing" is otherwise
-		// indistinguishable between: the jump was never called, it was called and
-		// returned without moving the file, or it moved and the clock did not.
-		// =====================================================================
-		//  THE ENGINE'S OWN REWIND -- CL_Demo_JumpToStart_f
-		// =====================================================================
+		// In build 22, restoring a cached slot directly produced demo parse error
+		// 4780 and a later crash in per-frame model processing. The engine's
+		// JumpToStart command branches to ResetReplay for a nonzero oldest slot;
+		// ResetReplay clears the keyframe ring, repositions the demo file, and
+		// reparses from the beginning without a menu transition. Use that full
+		// engine path for backward seeks, then forward-skip to the target. This
+		// remains an in-game test candidate until the tester confirms it.
 		//
-		// PROVEN DEAD 2026-09-21, over two user logs (builds 5 and 6):
-		// ProcessKeyFrameJump does NOTHING. The file cursor never moves toward the
-		// slot's own fileOff; across the call it advances by one ordinary frame of
-		// playback and nothing else. The delta-coding/baseline theory was tested in
-		// build 6 and REFUTED -- 0 of 5 slots had a baseline, so baseline=-1 is
-		// simply normal here and never was the cause.
+		//   ResetReplay (the engine's CL_Demo_JumpToStart_f branch for a
+		//   nonzero oldest slot)  IDA 0x919CE0 - 0x1000 = 0x918CE0.
 		//
-		// ⭐ WHAT THE RECORD ALREADY SAID, and what we were not doing.
-		// CLAUDE.md's read of CL_Demo_JumpToStart_f @0x910480:
-		//
-		//     scans slots, index != 0 -> sub_919CE0, else ProcessKeyFrameJump(0)
-		//
-		// The ENGINE calls ProcessKeyFrameJump only in the index == 0 case. For
-		// every other slot it uses sub_919CE0, the reset/replay -- which CLAUDE.md
-		// noted and then set aside ("NOT trusted, not used") because its decompile
-		// is confusing: it memsets the slot ring before the reads. So we have been
-		// calling the engine's special case and expecting its general one.
-		//
-		// Let the engine rewind the way it rewinds itself, then use the forward
-		// skip, which is independently proven to work (cls_realtime += gap, pump).
-		// A backward seek becomes rewind-to-start + skip-forward.
-		//
-		//   CL_Demo_JumpToStart_f  IDA 0x910480 - 0x1000 = 0x90F480
-		//
-		// ⚠ SIGNATURE IS INFERRED: `void __fastcall(unsigned int)`, the
-		// localClientNum shape every other CL_Demo_* entry point here uses. If it is
-		// really void(void) the extra rcx is harmless under the x64 convention, so
-		// the call is safe either way. What would NOT be safe is the address being
-		// wrong -- hence the guards below.
-		constexpr std::size_t ADDR_JUMP_TO_START = 0x90F480;
+		// The engine passes localClientNum in ecx when it tail-jumps here from
+		// CL_Demo_JumpToStart_f (IDA 0x910563). Guard the known Steam prologue so
+		// a patched build refuses the call instead of jumping to unknown code.
+		constexpr std::size_t ADDR_RESET_REPLAY = 0x918CE0;
 
 		// demo_seek_keyframe 1 goes back to the old ProcessKeyFrameJump route.
 		// Caball009 inversion: write snap.serverTime BEFORE the jump, not after.
 		bool g_pre_seed_snap = true;
-		bool g_seek_via_restart = false;
+		bool g_seek_via_full_reset = true;
 
-		// LEAF, no C++ objects, so __try/__except is legal. A wrong address becomes
-		// a printed failure instead of killing the session -- this runs on a
-		// tester's machine, not one we can attach a debugger to.
-		[[nodiscard]] bool call_jump_to_start_guarded(const std::uintptr_t fn,
+		// Leaf SEH wrapper for a potential fault at the game call boundary.
+		[[nodiscard]] bool call_reset_replay_guarded(const std::uintptr_t fn,
 			const unsigned int client)
 		{
 			__try
@@ -435,11 +411,20 @@ namespace demo_native
 		// that it returned cleanly and did nothing.
 		bool rewind_to_start()
 		{
-			const auto fn = _b(ADDR_JUMP_TO_START);
+			const auto fn = _b(ADDR_RESET_REPLAY);
 			if (!readable(reinterpret_cast<const void*>(fn), 16))
 			{
-				Console::printf("[demo] rewind: CL_Demo_JumpToStart_f not readable at %p "
+				Console::printf("[demo] rewind: engine reset-and-replay not readable at %p "
 					"-- refusing to call it", reinterpret_cast<void*>(fn));
+				return false;
+			}
+			constexpr std::uint8_t RESET_PROLOGUE[] = {
+				0x48, 0x89, 0x5C, 0x24, 0x08, 0x48, 0x89, 0x6C, 0x24, 0x10
+			};
+			if (std::memcmp(reinterpret_cast<const void*>(fn), RESET_PROLOGUE,
+				sizeof(RESET_PROLOGUE)) != 0)
+			{
+				Console::printf("[demo] rewind: engine reset signature changed -- refusing call");
 				return false;
 			}
 
@@ -454,10 +439,10 @@ namespace demo_native
 			const int t_before = current_demo_time();
 			const int c_before = cursor_now();
 
-			if (!call_jump_to_start_guarded(fn, static_cast<unsigned int>(LOCAL_CLIENT_0)))
+			if (!call_reset_replay_guarded(fn, static_cast<unsigned int>(LOCAL_CLIENT_0)))
 			{
-				Console::printf("[demo] rewind: CL_Demo_JumpToStart_f FAULTED -- the address is "
-					"wrong for this build. Nothing else was touched.");
+				Console::printf("[demo] rewind: engine reset-and-replay faulted; "
+					"check this game's binary and demo state");
 				return false;
 			}
 
@@ -466,8 +451,8 @@ namespace demo_native
 			const bool moved = (c_after >= 0 && c_before >= 0 && c_after < c_before);
 			Console::printf("[demo] rewind to start: demoT %d -> %d, cursor %d -> %d  (%s)",
 				t_before, t_after, c_before, c_after,
-				moved ? "THE STREAM WENT BACK -- this is the working primitive"
-					  : "cursor did NOT go back; this route is dead too");
+				moved ? "stream moved back (gameplay still needs tester validation)"
+					  : "cursor did NOT go back; refusing to claim a rewind");
 
 			// NOTE: the caller clears g_eof_seen -- it is declared further down this
 			// file than this helper, which sits next to jump_to_slot for readability.
@@ -5170,7 +5155,9 @@ namespace demo_native
         bool g_restart_paused = false;
         int g_restart_camera = 0;
         float g_restart_speed = 1.0f;
-        bool g_restart_seek_enabled = true;
+		// Full demo reopening has produced a black screen in the tester's
+		// build-22 arrow-key run. Keep it opt-in while the in-place reset is tested.
+		bool g_restart_seek_enabled = false;
         constexpr std::uint64_t RESTART_GIVE_UP_MS = 60000;
 
         bool begin_restart_seek(const int target, const bool resume_after)
@@ -5318,10 +5305,10 @@ namespace demo_native
 		// Snapshots are 50 ms apart, so anything closer than that is "here".
 		if (target < now - 50)
 		{
-			// ROUTE A -- the engine's own rewind, then skip forward to the target.
-			// Default, because route B below is PROVEN not to move the stream at
-			// all (builds 5 and 6). `demo_seek_keyframe 1` restores the old path.
-			if (g_seek_via_restart)
+			// ROUTE A -- the engine's full in-place reset/replay, then skip
+			// forward. The cached keyframe route below produced error 4780 and an
+			// eventual bad model pointer in the build-22 tester session.
+			if (g_seek_via_full_reset)
 			{
 				if (rewind_to_start())
 				{
@@ -5336,8 +5323,9 @@ namespace demo_native
 						now, target - now);
 					goto forward_skip;
 				}
-				Console::printf("[demo] seek: the engine rewind did not move the stream; "
-					"falling back to the keyframe jump (which has never worked either)");
+				Console::printf("[demo] seek FAILED: in-place reset did not rewind the "
+					"stream; keeping the failing keyframe and menu-reload routes disabled");
+				return false;
 			}
 
 			const auto slots = usable_slots();
@@ -6847,11 +6835,11 @@ namespace demo_native
 			const auto* a = GameUtil::getCmdArgs();
 			if (a && a->argc[a->nesting] >= 2)
 			{
-				g_seek_via_restart = GameUtil::safeStringToInt(a->argv[a->nesting][1]) == 0;
+				g_seek_via_full_reset = GameUtil::safeStringToInt(a->argv[a->nesting][1]) == 0;
 			}
 			Console::printf("[demo] backward seek route: %s   (demo_seek_keyframe <0|1>)",
-				g_seek_via_restart ? "rewind-to-start + skip forward"
-					: "ProcessKeyFrameJump (proven to do nothing)");
+				g_seek_via_full_reset ? "full in-place reset + skip forward"
+					: "legacy cached keyframe jump (unstable in build 22)");
 		});
 
 		GameUtil::addCommand("demo_seek_kf", []   // always: seek_to_time / seek_back queue it

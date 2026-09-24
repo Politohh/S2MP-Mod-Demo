@@ -34,8 +34,13 @@ EXCEPTION_STREAM = 6
 # x64 CONTEXT field offsets.
 CONTEXT_RIP = 0xF8
 CONTEXT_RSP = 0x98
+CONTEXT_RAX = 0x78
 CONTEXT_RCX = 0x80
 CONTEXT_RDX = 0x88
+CONTEXT_RBX = 0x90
+CONTEXT_RBP = 0xA0
+CONTEXT_RSI = 0xA8
+CONTEXT_RDI = 0xB0
 CONTEXT_R8 = 0xB8
 CONTEXT_R9 = 0xC0
 
@@ -186,18 +191,21 @@ def report(path: Path, verbose: bool = True) -> None:
             print(f"    ^^ NULL-ish: this is a null base + offset 0x{target:X} "
                   f"({target} decimal) -- a field read off a NULL struct pointer")
 
-    # Faulting thread: registers + heuristic stack walk.
+    # MINIDUMP_THREAD.Context is frequently the crash handler's later
+    # MiniDumpWriteDump call. The exception stream holds the original fault
+    # context; using the thread context misattributes the failing registers.
     faulting = next((t for t in dump.threads() if t["id"] == exc["thread_id"]), None)
     if not faulting or not verbose:
         return
 
-    ctx_rva, ctx_size = faulting["ctx_rva"], faulting["ctx_size"]
+    ctx_rva, ctx_size = exc["ctx_rva"], exc["ctx_size"]
     regs = {
-        "rip": CONTEXT_RIP, "rsp": CONTEXT_RSP,
-        "rcx": CONTEXT_RCX, "rdx": CONTEXT_RDX,
+        "rip": CONTEXT_RIP, "rsp": CONTEXT_RSP, "rax": CONTEXT_RAX,
+        "rcx": CONTEXT_RCX, "rdx": CONTEXT_RDX, "rbx": CONTEXT_RBX,
+        "rbp": CONTEXT_RBP, "rsi": CONTEXT_RSI, "rdi": CONTEXT_RDI,
         "r8": CONTEXT_R8, "r9": CONTEXT_R9,
     }
-    print(f"    thread {exc['thread_id']} registers:")
+    print(f"    thread {exc['thread_id']} exception registers:")
     for reg, off in regs.items():
         val = dump.context_reg(ctx_rva, ctx_size, off)
         if val is None:

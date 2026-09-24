@@ -31,7 +31,8 @@
 //  11  restart+fast-forward (MW3 route) -- stranded at the menu: dropped Cbuf command
 //  12  Cbuf_AddText reports drops; deferred restart retries (retries failed too)
 //  13  restart-seek OFF by default (it broke scrubbing); roll via the view axis
+//  23  in-place engine reset for rewind; menu-reload fallback OFF after build-22 crashes
 namespace mod_build
 {
-	constexpr int NUMBER = 22;
+	constexpr int NUMBER = 23;
 }
