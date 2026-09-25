@@ -1,7 +1,8 @@
-<# Repackage the two unchanged, numbered binaries with current release docs. #>
+<# Package the current DLL and an existing launcher with numbered release docs. #>
 param(
     [Parameter(Mandatory = $true)][string] $BasePackage,
-    [Parameter(Mandatory = $true)][string] $OutputZip
+    [Parameter(Mandatory = $true)][string] $OutputZip,
+    [string] $ModDllPath
 )
 
 $ErrorActionPreference = 'Stop'
@@ -9,13 +10,16 @@ $sourceRoot = Split-Path $PSScriptRoot -Parent
 $buildHeader = Get-Content -LiteralPath (Join-Path $sourceRoot 'src/ModBuild.hpp') -Raw
 $build = [regex]::Match($buildHeader, 'constexpr int NUMBER\s*=\s*(\d+)')
 if (-not $build.Success) { throw 'Cannot read the package build number.' }
-if (-not ([IO.Path]::GetFileName($BasePackage) -match "build-$($build.Groups[1].Value)\b")) {
+if (-not $ModDllPath -and -not ([IO.Path]::GetFileName($BasePackage) -match "build-$($build.Groups[1].Value)\b")) {
     throw 'Base ZIP name must match the DLL package build number.'
 }
 if (-not ([IO.Path]::GetFileName($OutputZip) -match "build-$($build.Groups[1].Value)\b")) {
     throw 'Output ZIP name must contain the DLL package build number.'
 }
 if (Test-Path -LiteralPath $OutputZip) { throw "Output already exists: $OutputZip" }
+if ($ModDllPath -and -not (Test-Path -LiteralPath $ModDllPath -PathType Leaf)) {
+    throw "Mod DLL not found: $ModDllPath"
+}
 
 Add-Type -AssemblyName System.IO.Compression
 Add-Type -AssemblyName System.IO.Compression.FileSystem
@@ -24,6 +28,7 @@ $source = [IO.Compression.ZipFile]::OpenRead((Resolve-Path -LiteralPath $BasePac
 try {
     $binaryNames = @('S2MP-Launcher.exe', 's2mp-mod.dll')
     foreach ($name in $binaryNames) {
+        if ($name -eq 's2mp-mod.dll' -and $ModDllPath) { continue }
         if (-not $source.GetEntry($name)) { throw "Missing $name in base package." }
     }
 
@@ -40,6 +45,10 @@ try {
         }
 
         foreach ($name in $binaryNames) {
+            if ($name -eq 's2mp-mod.dll' -and $ModDllPath) {
+                Add-EntryBytes $output $name ([IO.File]::ReadAllBytes((Resolve-Path -LiteralPath $ModDllPath).Path))
+                continue
+            }
             $inputStream = $source.GetEntry($name).Open()
             $memory = [IO.MemoryStream]::new()
             try { $inputStream.CopyTo($memory); Add-EntryBytes $output $name $memory.ToArray() }
@@ -50,7 +59,7 @@ try {
             'INSTALL.txt'         = 'docs/INSTALL.txt'
             'README.md'           = 'README.md'
             'CREDITS.md'          = 'CREDITS.md'
-            'RELEASE-NOTES.md'    = 'docs/RELEASE-BUILD-28.md'
+            'RELEASE-NOTES.md'    = "docs/RELEASE-BUILD-$($build.Groups[1].Value).md"
             'RESHADE-SETUP.txt'   = 'docs/RESHADE-SETUP.txt'
             'ReShade-LICENSE.md'  = 'src/third_party/reshade/LICENSE.md'
         }

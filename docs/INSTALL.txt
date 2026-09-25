@@ -1,4 +1,4 @@
-S2MP Mod - Polito's cinematic build 28
+S2MP Mod - Polito's cinematic build 29
 
 This is an unofficial continuation of josh155/S2MP-Mod demo-w2dr,
 originally forked from Rattpak/S2MP-Mod. See CREDITS.md.
@@ -8,7 +8,7 @@ INSTALL
 2. Copy BOTH S2MP-Launcher.exe and s2mp-mod.dll beside your own
    s2_mp64_ship.exe. Replace the previous mod copies together.
 3. Start S2MP-Launcher.exe. Open the tools window with F9 or Insert.
-4. A fresh main\s2mp_console.log should contain "[s2mp] package build 28".
+4. A fresh main\s2mp_console.log should contain "[s2mp] package build 29".
 
 DOLLY: Play a demo, enable "Drive the camera" in Dolly, place points with
 K, delete the last point with L, and press J to rewind and play the path.
@@ -20,7 +20,7 @@ see RESHADE-SETUP.txt for the post-effects requirement.
 
 CINEBOT: In a private/custom match, ADS + your bound Use key spawns a
 bot at the crosshair. F7 moves the selected bot; F8 toggles freeze.
-F4's directed run is awaiting in-game validation in Build 28. See
+F4's directed run is awaiting in-game validation. See
 RELEASE-NOTES.md for its test steps. Bone Cam remains experimental.
 
 For problems, send the fresh main\s2mp_console.log and, for bot issues,

@@ -27,6 +27,7 @@
 #include "demo/theater_camera.hpp"
 #include "demo/bonecam.hpp"
 #include "demo/demo_camera.hpp"
+#include "demo/dolly_clock.hpp"
 
 #include "Console.hpp"
 #include "FuncPointers.h"
@@ -34,6 +35,7 @@
 #include "Hook.hpp"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <format>
 #include <mutex>
@@ -136,11 +138,10 @@ namespace dolly
 				&& (demo_native::native_playing() || demo_playback::is_playing());
 		}
 
-		// The smooth, continuously-advancing clock for whichever system is
-		// playing -- never the stepped snapshot value. Native reads cl.serverTime
-		// (demo_time_smooth()); the custom theater integrates its own clock every
-		// frame in advance_clock() and exposes it as current_time(). -1 when
-		// neither system is playing.
+		// The engine's interpolated clock for whichever system is playing --
+		// never the stepped snapshot value. At extreme native slow motion even
+		// cl.serverTime can jump in scaled tick-sized steps, so drive() further
+		// smooths that clock for the camera only. -1 when no demo is playing.
 		[[nodiscard]] int active_time()
 		{
 			if (demo_native::native_playing())
@@ -188,6 +189,8 @@ namespace dolly
 		bool g_show_markers = true;
 		bool g_hook_ok = false;
 		bool g_logged_first_projection = false;
+		// Only drive() (the client thread) touches this clock.
+		dolly_slow_clock g_slow_clock;
 
 		// ---- safety ----------------------------------------------------------
 		// RULE A6 — `if (!p)` is not enough in this game: a global belonging to an
@@ -307,7 +310,7 @@ namespace dolly
 		// Evaluate the dolly at demo time `t`. Returns false outside the span, so
 		// the camera stays free before the first point and after the last — that
 		// is what makes "fly, add a point, fly on" work as an editing workflow.
-		[[nodiscard]] bool evaluate(const std::vector<point_t>& pts, const int t,
+		[[nodiscard]] bool evaluate(const std::vector<point_t>& pts, const double t,
 			float out_pos[3], float out_ang[3], float* out_fov = nullptr)
 		{
 			if (out_fov)
@@ -558,6 +561,7 @@ namespace dolly
 		// be WRITTEN here, not just read.
 		if (!g_enabled || demo_native::seek_in_progress() || !camera_ready() || !demo_native::cgame_active())
 		{
+			g_slow_clock.reset();
 			return;
 		}
 
@@ -566,16 +570,38 @@ namespace dolly
 			std::lock_guard<std::mutex> lock(g_lock);
 			if (g_points.size() < 2)
 			{
+				g_slow_clock.reset();
 				return;
 			}
 			pts = g_points;
 		}
 
-		// THE SMOOTH CLOCK, not a stepped snapshot value. See active_time().
-		const int t = active_time();
-		if (t < 0)
+		// At 0.05x, the engine clock can advance about 16 ms once every ~20
+		// captured 60 fps frames. Keep the camera on a continuous sub-ms clock;
+		// seek, pause, and ordinary playback still use the engine's own time.
+		const int engine_t = active_time();
+		if (engine_t < 0)
 		{
+			g_slow_clock.reset();
 			return;
+		}
+		double t = engine_t;
+		if (demo_native::native_playing())
+		{
+			const double wall_ms = std::chrono::duration<double, std::milli>(
+				std::chrono::steady_clock::now().time_since_epoch()).count();
+			t = g_slow_clock.sample(engine_t, wall_ms,
+				demo_native::engine_timescale(), demo_native::engine_paused());
+			if (g_slow_clock.samples() == 120)
+			{
+				Console::printf("[dolly] slow clock: 120 camera updates, %d repeated "
+					"engine times, largest engine step %d ms",
+					g_slow_clock.repeated(), g_slow_clock.max_engine_step());
+			}
+		}
+		else
+		{
+			g_slow_clock.reset();
 		}
 
 		float pos[3]{};
