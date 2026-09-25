@@ -31,8 +31,9 @@ struct IDXGISwapChain;
 //
 // So this captures every PRESENTED frame and tags the stream at the output rate
 // below. The workflow that gets you smooth footage today is the one the slow
-// motion work just unlocked: drop `demo_speed` (now down to 0.01), let the
-// engine render the slowed footage comfortably, and capture at 60. Frame lock
+// motion work just unlocked: slow the demo to a stable rate (the tester found
+// 0.05 to be the practical floor), let the engine render comfortably, and
+// capture at 60. Frame lock
 // proper is the next step, and it is a separate, testable change.
 namespace demo_capture
 {

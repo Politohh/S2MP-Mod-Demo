@@ -176,6 +176,12 @@ namespace demo_capture
 			case DXGI_FORMAT_R8G8B8A8_UNORM:
 			case DXGI_FORMAT_R8G8B8A8_UNORM_SRGB:
 				return "rgba";
+			case DXGI_FORMAT_R10G10B10A2_UNORM:
+				// DXGI packs R in bits 0..9, G in 10..19, B in 20..29.
+				// FFmpeg's x2bgr10le reads those same bits in that order, so the
+				// existing row-pitch copy preserves all 10 bits without conversion.
+				// The top two alpha bits are unused by 422 ProRes.
+				return "x2bgr10le";
 			default:
 				return nullptr;
 			}
@@ -343,8 +349,10 @@ namespace demo_capture
 					"it is baked into the file's header at start.");
 				return;
 			}
-			g_fps = std::clamp(GameUtil::safeStringToInt(args->argv[args->nesting][1]), 1, 240);
-			Console::printf("[capture] output rate: %d fps", g_fps);
+			const int requested = GameUtil::safeStringToInt(args->argv[args->nesting][1]);
+			g_fps = std::clamp(requested, 1, 240);
+			Console::printf("[capture] output rate: %d fps%s", g_fps,
+				requested > 240 ? " (limit 240; this records presented frames, not frame-locked avidemo)" : "");
 		}
 
 		void cmd_profile()
@@ -514,12 +522,21 @@ namespace demo_capture
 			const char* pix = raw_pixel_format(desc.Format);
 			if (!pix)
 			{
-				Console::printf("[capture] back buffer format %d is not an 8-bit RGBA/BGRA "
-					"layout -- refusing rather than writing a file with wrong colours. "
+				Console::printf("[capture] back buffer format %d has no verified FFmpeg "
+					"raw-video layout -- refusing rather than writing wrong colours. "
 					"Report this number and it can be added.", static_cast<int>(desc.Format));
 				back->Release();
 				g_recording.store(false, std::memory_order_relaxed);
 				g_stop_reason = "unsupported back buffer format";
+				return;
+			}
+			if (desc.Format == DXGI_FORMAT_R10G10B10A2_UNORM && g_profile >= 4)
+			{
+				Console::printf("[capture] this 10-bit back buffer has only 2-bit alpha; "
+					"ProRes 4444 alpha capture is unsupported. Select profile 0..3.");
+				back->Release();
+				g_recording.store(false, std::memory_order_relaxed);
+				g_stop_reason = "10-bit 4444 alpha capture unsupported";
 				return;
 			}
 

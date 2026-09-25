@@ -32,7 +32,8 @@
 //  12  Cbuf_AddText reports drops; deferred restart retries (retries failed too)
 //  13  restart-seek OFF by default (it broke scrubbing); roll via the view axis
 //  23  in-place engine reset for rewind; menu-reload fallback OFF after build-22 crashes
+//  24  10-bit DXGI back-buffer capture to ProRes, without changing the dolly
 namespace mod_build
 {
-	constexpr int NUMBER = 23;
+	constexpr int NUMBER = 24;
 }
