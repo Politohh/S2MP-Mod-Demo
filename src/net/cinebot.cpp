@@ -11,6 +11,7 @@
 #include <atomic>
 #include <chrono>
 #include <cmath>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
@@ -51,6 +52,7 @@ namespace
 		bool rushing{};
 		bool rush_reported{};
 		ULONGLONG rush_started{};
+		std::uint64_t rush_call_baseline{};
 		vec3 rush_origin{};
 		vec3 rush_target{};
 	};
@@ -85,9 +87,10 @@ namespace
 	std::array<bot_state, kMaxTrackedBots> bots{};
 	std::array<rush_command, kMaxTrackedBots> rush_commands{};
 	std::array<std::atomic_uint, kMaxTrackedBots> rush_command_hits{};
+	std::atomic_uint64_t test_client_command_calls{};
 	std::mutex rush_mutex;
-	using bot_usercmd_fn = std::int64_t(*)(void*, void*);
-	bot_usercmd_fn original_bot_usercmd{};
+	using test_client_command_fn = std::int64_t(*)(void*, void*);
+	test_client_command_fn original_test_client_command{};
 	bool rush_hook_ready{};
 	std::atomic_int selected_bot_slot{-1};
 	float placement_distance = 250.0f;
@@ -139,6 +142,7 @@ namespace
 			executable_address(at<void*>(rva::SV_SetAssignedTeam)) &&
 			executable_address(at<void*>(rva::G_SetPlayerOrigin)) &&
 			executable_address(at<void*>(rva::G_SetPlayerAngles)) &&
+			executable_address(at<void*>(rva::G_GetPlayerUsercmd)) &&
 			executable_address(at<void*>(rva::SV_LinkEntity)) &&
 			executable_address(at<void*>(rva::SV_IsTestClient)) &&
 			executable_address(at<void*>(rva::SV_RefreshTestClient)) &&
@@ -284,39 +288,53 @@ namespace
 		rush_commands = {};
 	}
 
-	std::int64_t bot_usercmd_hook(void* bot_input, void* command)
+	std::int64_t test_client_command_hook(void* client, void* command)
 	{
-		const auto result = original_bot_usercmd(bot_input, command);
-		if (!bot_input || !command) return result;
-		// The first field of the 144-byte native bot command record is the
-		// entity number. Do not touch unrelated game bots or agent commands.
-		const int slot = *static_cast<const std::int16_t*>(bot_input);
-		if (slot < 0 || static_cast<std::size_t>(slot) >= rush_commands.size()) return result;
+		++test_client_command_calls;
+		if (!client || !command) return original_test_client_command(client, command);
+		// This is the actual SV test-client command consumer. The Build 27
+		// bot-input hook was installed but never matched these spawned clients.
+		const auto* clients = *at<std::byte**>(rva::svs_clients);
+		const auto client_address = reinterpret_cast<std::uintptr_t>(client);
+		const auto base_address = reinterpret_cast<std::uintptr_t>(clients);
+		if (!clients || client_address < base_address)
+			return original_test_client_command(client, command);
+		const auto offset = client_address - base_address;
+		if (offset % kClientStride != 0)
+			return original_test_client_command(client, command);
+		const auto slot = offset / kClientStride;
+		if (slot >= rush_commands.size())
+			return original_test_client_command(client, command);
 		rush_command rush{};
 		{
 			std::lock_guard lock(rush_mutex);
-			rush = rush_commands[static_cast<std::size_t>(slot)];
+			rush = rush_commands[slot];
 		}
 		if (!rush.entity || rush.entity != at<std::byte*>(rva::g_entities) +
-			static_cast<std::size_t>(slot) * kEntityStride)
-			return result;
+			slot * kEntityStride)
+			return original_test_client_command(client, command);
 		if (*reinterpret_cast<const int*>(static_cast<const std::byte*>(rush.entity) + kEntityHealthOffset) <= 0)
-			return result;
-		const auto current = entity_origin(rush.entity);
-		const float progress = (current.x - rush.origin.x) * rush.forward_x +
-			(current.y - rush.origin.y) * rush.forward_y;
+			return original_test_client_command(client, command);
+		const auto position = entity_origin(rush.entity);
+		const float progress = (position.x - rush.origin.x) * rush.forward_x +
+			(position.y - rush.origin.y) * rush.forward_y;
 		auto* bytes = static_cast<std::byte*>(command);
-		// Override the native AI's forward/side motion AFTER it has built the
-		// usercmd. Physics still handles running, collision and death animation.
+		// Override the native AI's command BEFORE the engine copies and runs it.
+		// Physics still handles running, collision and death animation.
 		const bool running = progress < rush.run_distance - 48.0f;
 		bytes[kUsercmdForwardOffset] = std::byte(running ? 127 : 0);
 		bytes[kUsercmdRightOffset] = std::byte(0);
 		bytes[kUsercmdUpOffset] = std::byte(0);
 		auto* buttons = reinterpret_cast<std::uint64_t*>(bytes + kUsercmdButtonsOffset);
 		*buttons = running ? kBotSprintButton : 0;
+		// G_SetPlayerAngles computes delta_angles against the PREVIOUS command.
+		// Keep the new command's angle words equal to those previous words so
+		// ClientThink cannot reapply an AI turn on top of our fixed world yaw.
+		if (const auto* prior = at<const std::byte*(*)(void*)>(rva::G_GetPlayerUsercmd)(rush.entity))
+			std::memcpy(bytes + 16, prior + 16, 3 * sizeof(std::int32_t));
 		at<void(*)(void*, const float*)>(rva::G_SetPlayerAngles)(rush.entity, &rush.angles.x);
-		++rush_command_hits[static_cast<std::size_t>(slot)];
-		return result;
+		++rush_command_hits[slot];
+		return original_test_client_command(client, command);
 	}
 
 	unsigned int lui_notify_event()
@@ -471,6 +489,25 @@ namespace
 			}
 			log("Bot slot " + std::to_string(bot.slot) +
 				" death detected; placement is paused for the death animation.");
+		}
+		if (alive && bot.rushing && bot.frozen)
+		{
+			const auto hits = rush_command_hits[static_cast<std::size_t>(bot.slot)].load();
+			if (hits > 0)
+			{
+				bot.frozen = false;
+				log("F4 bot " + std::to_string(bot.slot) +
+					" released after the test-client command override became active.");
+			}
+			else if (GetTickCount64() - bot.rush_started >= 500)
+			{
+				const auto calls = test_client_command_calls.load() - bot.rush_call_baseline;
+				clear_rush_command(bot.slot);
+				bot.rushing = false;
+				log("F4 bot " + std::to_string(bot.slot) +
+					" remains frozen: no matching test-client commands after 500 ms; hook calls=" +
+					std::to_string(calls) + '.');
+			}
 		}
 		if (alive && bot.rushing && !bot.rush_reported &&
 			GetTickCount64() - bot.rush_started >= 1500)
@@ -640,22 +677,23 @@ namespace
 			bot.rush_origin = origin;
 			bot.rush_target = target;
 			bot.rush_started = GetTickCount64();
+			bot.rush_call_baseline = test_client_command_calls.load();
 			bot.rush_reported = false;
 			bot.rushing = true;
-			bot.frozen = false;
+			bot.frozen = true; // Keep stationary until the command hook proves it is active.
 			if (auto* game_client = *reinterpret_cast<std::byte**>(
 				static_cast<std::byte*>(bot.entity) + kEntityClientOffset))
-				*reinterpret_cast<int*>(game_client + kGameClientFlagsOffset) &= ~4;
+				*reinterpret_cast<int*>(game_client + kGameClientFlagsOffset) |= 4;
+			rush_command_hits[static_cast<std::size_t>(bot.slot)] = 0;
 			{
 				std::lock_guard lock(rush_mutex);
 				rush_commands[static_cast<std::size_t>(bot.slot)] = command;
 			}
-			rush_command_hits[static_cast<std::size_t>(bot.slot)] = 0;
 			++released;
 		}
 		publish_bots();
-		log("F4 directed " + std::to_string(released) +
-			" bot(s) toward the captured player position using native movement commands.");
+		log("F4 armed " + std::to_string(released) +
+			" bot(s) toward the captured player position; release waits for command interception.");
 	}
 
 	bool queue_main_thread(void(__cdecl* callback)())
@@ -719,9 +757,9 @@ namespace cinebot
 		placement_distance = static_cast<float>(GetPrivateProfileIntW(L"Placement", L"FallbackDistance", 250,
 			(module_directory / "S2CineBot.ini").c_str()));
 		if (placement_distance < 25.0f || placement_distance > 5000.0f) placement_distance = 250.0f;
-		rush_hook_ready = executable_address(at<void*>(rva::SV_BotBuildUsercmd)) &&
-			Hook::create("CineBot_final_usercmd", game_base + rva::SV_BotBuildUsercmd,
-				&bot_usercmd_hook, &original_bot_usercmd) && original_bot_usercmd;
+		rush_hook_ready = executable_address(at<void*>(rva::SV_ProcessTestClientCommand)) &&
+			Hook::create("CineBot_test_client_command", game_base + rva::SV_ProcessTestClientCommand,
+				&test_client_command_hook, &original_test_client_command) && original_test_client_command;
 		log(std::string("Directed bot movement hook: ") + (rush_hook_ready ? "ready." : "unavailable; F4 disabled."));
 		g_available = true;
 		activate_binding = Functions::_Key_GetBindingForCommand ?

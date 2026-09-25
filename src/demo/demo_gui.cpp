@@ -1431,15 +1431,15 @@ namespace demo_gui
 			ImGui::SeparatorText("CineBot");
 			if (cinebot::available())
 			{
-				ImGui::TextWrapped("Private/custom match: hold ADS and press your bound Use key to spawn at the crosshair. F4 faces/releases all bots, F7 moves selected, F8 toggles freeze.");
+				ImGui::TextWrapped("Private/custom match: hold ADS and press your bound Use key to spawn at the crosshair. F4 sends all CineBots on a straight run toward your current position, F7 moves selected, F8 toggles freeze.");
 				if (ImGui::Button("Spawn at crosshair (ADS + Use)")) cinebot::spawn_at_crosshair();
 				ImGui::SameLine();
 				if (ImGui::Button("Move selected (F7)")) cinebot::move_selected_to_crosshair();
 				ImGui::SameLine();
 				if (ImGui::Button("Freeze / unfreeze (F8)")) cinebot::toggle_selected_freeze();
-				if (ImGui::Button("Face player + release all (F4)", ImVec2(-1, 28)))
+				if (ImGui::Button("Straight run toward player (F4)", ImVec2(-1, 28)))
 					cinebot::rush_all_toward_player();
-				ImGui::TextDisabled("F4 releases bots to native AI; the log measures their movement after 1.5 seconds.");
+				ImGui::TextDisabled("Bots stay frozen if their movement commands cannot be intercepted; the log reports why.");
 				for (const auto& bot : cinebot::list())
 				{
 					const std::string label = std::format("Slot {} | {} | {}##cinebot{}", bot.slot,
