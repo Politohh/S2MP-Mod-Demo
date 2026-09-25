@@ -1,23 +1,25 @@
 #pragma once
 
 #include <string>
+#include <cstdint>
 
 struct IDXGISwapChain;
+struct ID3D11Texture2D;
 
 // =============================================================================
 //  DEMO CAPTURE — back buffer -> ffmpeg -> ProRes .mov
 // =============================================================================
 //
 // The old Call of Duty `avidemo` idea, done with a modern encoder: every frame
-// the game presents is read back off the swap chain and pushed down a pipe to
+// the game presents is read back and pushed down a pipe to
 // ffmpeg, which writes ProRes 422 straight to disk. No screen recorder, no
 // desktop compositor in the way, no second encode — what the engine drew is
 // what lands in the file, at full precision, ready to cut.
 //
-// WHERE IT RUNS. demo_gui's EXISTING Present hook calls on_present() BEFORE it
-// draws the ImGui overlay (RULE A3.1 — the swap chain is not hooked twice).
-// That ordering is the whole reason the recording is clean game footage with no
-// tool window in it, so it must not be moved below the overlay draw.
+// WHERE IT RUNS. demo_gui's existing Present hook calls on_present() before
+// the ImGui overlay. When compatible ReShade add-on support is available, its
+// finish-effects callback supplies the actual post-effect render target to
+// on_post_effect_texture() instead. Both routes avoid baking in the tool UI.
 //
 // ⚠ WHAT THIS IS NOT, YET: TRUE FRAME LOCK.
 //
@@ -42,8 +44,14 @@ namespace demo_capture
 	// From demo_gui's Present hook, BEFORE the overlay is drawn. No-op unless
 	// recording. Safe to call every frame.
 	void on_present(IDXGISwapChain* swap);
+	// ReShade's finish-effects callback supplies its actual post-effect target.
+	void on_post_effect_texture(ID3D11Texture2D* texture);
+	void set_post_effect_capture(bool enabled);
+	[[nodiscard]] bool post_effect_capture();
 
 	[[nodiscard]] bool recording();
+	[[nodiscard]] std::uint64_t frame_count();
+	[[nodiscard]] std::uint64_t dropped_count();
 	[[nodiscard]] std::string status();
 
 	// `name` may be empty, in which case the file is named from the clock.

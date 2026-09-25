@@ -36,6 +36,8 @@ namespace demo_capture
 		// atomic and everything else is only touched while it is false, or under
 		// g_queue_lock. That keeps the not-recording case to a single load.
 		std::atomic<bool> g_recording{ false };
+		std::atomic<bool> g_post_effect_capture{ false };
+		std::atomic<ULONGLONG> g_last_post_effect_frame{ 0 };
 
 		HANDLE g_pipe_write = nullptr;
 		HANDLE g_ffmpeg_process = nullptr;
@@ -52,8 +54,8 @@ namespace demo_capture
 		// presented frame. Resolving it again on the Present thread would mean a
 		// filesystem probe inside the render path for no reason.
 		fs::path g_ffmpeg_path;
-		std::uint64_t g_frames = 0;
-		std::uint64_t g_dropped = 0;
+		std::atomic<std::uint64_t> g_frames{ 0 };
+		std::atomic<std::uint64_t> g_dropped{ 0 };
 		std::string g_stop_reason;
 
 		// ---- the pipe queue ----------------------------------------------
@@ -397,6 +399,8 @@ namespace demo_capture
 	// =====================================================================
 
 	bool recording() { return g_recording.load(std::memory_order_relaxed); }
+	std::uint64_t frame_count() { return g_frames.load(); }
+	std::uint64_t dropped_count() { return g_dropped.load(); }
 
 	std::string status()
 	{
@@ -412,8 +416,8 @@ namespace demo_capture
 		}
 		return std::format(
 			"[capture] RECORDING {}x{} @ {} fps, ProRes {} | {} frames{} | {}",
-			g_width, g_height, g_fps, profile_name(g_profile), g_frames,
-			g_dropped ? std::format(", {} DROPPED (encoder behind)", g_dropped) : "",
+			g_width, g_height, g_fps, profile_name(g_profile), g_frames.load(),
+			g_dropped.load() ? std::format(", {} DROPPED (encoder behind)", g_dropped.load()) : "",
 			g_out_path.string());
 	}
 
@@ -482,8 +486,8 @@ namespace demo_capture
 			Console::printf("[capture] not recording");
 			return;
 		}
-		const auto frames = g_frames;
-		const auto dropped = g_dropped;
+		const auto frames = g_frames.load();
+		const auto dropped = g_dropped.load();
 		const auto path = g_out_path;
 
 		Console::printf("[capture] finishing -- waiting for ffmpeg to close the file...");
@@ -500,16 +504,11 @@ namespace demo_capture
 			std::format("   ({:.1f} MB)", static_cast<double>(size) / (1024.0 * 1024.0)).c_str());
 	}
 
-	void on_present(IDXGISwapChain* swap)
+	void capture_texture(ID3D11Texture2D* back)
 	{
-		if (!g_recording.load(std::memory_order_relaxed) || !swap)
+		if (!g_recording.load(std::memory_order_relaxed) || !back)
 		{
-			return;
-		}
-
-		ID3D11Texture2D* back = nullptr;
-		if (FAILED(swap->GetBuffer(0, IID_PPV_ARGS(&back))) || !back)
-		{
+			if (back) back->Release();
 			return;
 		}
 
@@ -670,6 +669,32 @@ namespace demo_capture
 		}
 		g_queue_cv.notify_one();
 		++g_frames;
+	}
+
+	void on_present(IDXGISwapChain* swap)
+	{
+		if (!recording() || post_effect_capture() || !swap) return;
+		ID3D11Texture2D* back = nullptr;
+		if (SUCCEEDED(swap->GetBuffer(0, IID_PPV_ARGS(&back))) && back)
+			capture_texture(back);
+	}
+
+	void on_post_effect_texture(ID3D11Texture2D* texture)
+	{
+		if (!recording() || !texture) return;
+		texture->AddRef();
+		capture_texture(texture);
+	}
+
+	void set_post_effect_capture(const bool enabled)
+	{
+		g_last_post_effect_frame.store(enabled ? GetTickCount64() : 0);
+		g_post_effect_capture.store(enabled);
+	}
+	bool post_effect_capture()
+	{
+		return g_post_effect_capture.load() &&
+			GetTickCount64() - g_last_post_effect_frame.load() < 1000;
 	}
 
 	void init()

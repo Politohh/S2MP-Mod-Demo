@@ -7,6 +7,7 @@
 #include "demo/demo_player.hpp"
 #include "demo/demo_camera.hpp"
 #include "demo/demo_capture.hpp"
+#include "demo/reshade_capture.hpp"
 #include "demo/demo_display.hpp"
 #include "demo/demo_library.hpp"
 #include "demo/demo_playback.hpp"
@@ -17,6 +18,7 @@
 #include "net/dlc.hpp"
 #include "net/server_browser.hpp"
 #include "net/bots.hpp"
+#include "net/cinebot.hpp"
 #include "net/force_host.hpp"
 
 
@@ -58,6 +60,7 @@ namespace demo_gui
 		bool g_imgui_ready = false;
 		bool g_toggle_edge = false;
 		bool g_f9_edge = false;
+		bool g_f10_edge = false;
 		bool g_insert_edge = false;
 		bool g_space_edge = false;
 		bool g_left_edge = false;
@@ -1425,6 +1428,25 @@ namespace demo_gui
 		// is the one choice that is genuinely theirs.
 		void draw_bots_tab()
 		{
+			ImGui::SeparatorText("CineBot");
+			if (cinebot::available())
+			{
+				ImGui::TextWrapped("Private/custom match: aim at a spot and spawn a bot there. F6 spawn, F7 move selected, F8 toggle freeze.");
+				if (ImGui::Button("Spawn at crosshair (F6)")) cinebot::spawn_at_crosshair();
+				ImGui::SameLine();
+				if (ImGui::Button("Move selected (F7)")) cinebot::move_selected_to_crosshair();
+				ImGui::SameLine();
+				if (ImGui::Button("Freeze / unfreeze (F8)")) cinebot::toggle_selected_freeze();
+				for (const auto& bot : cinebot::list())
+				{
+					const std::string label = std::format("Slot {} | {} | {}##cinebot{}", bot.slot,
+						bot.alive ? "alive" : "joining/respawning", bot.frozen ? "frozen" : "moving", bot.slot);
+					if (ImGui::Selectable(label.c_str(), cinebot::selected_slot() == bot.slot)) cinebot::select(bot.slot);
+				}
+			}
+			else ImGui::TextWrapped("CineBot is unavailable for this game executable. Check s2mp_console.log for the exact-build check.");
+			ImGui::Spacing();
+			if (!ImGui::CollapsingHeader("Legacy bot lobby controls")) return;
 			static int  s_count = 11;      // 11 bots + you = a full-ish 12 lobby
 			static int  s_uniform_pct = 50;
 			static bool s_inited = false;
@@ -2278,6 +2300,55 @@ namespace demo_gui
 			}
 		}
 
+		void draw_recording_tab()
+		{
+			static int fps = 60;
+			static int profile = 3;
+			static char ffmpeg_path[MAX_PATH]{};
+			static char capture_name[128]{};
+			ImGui::TextWrapped("Capture the presented game frames as a ProRes .mov. Output is in the captures folder beside your demos.");
+			if (const auto demos = demo_utils::demos_directory())
+				ImGui::TextWrapped("Output: %s", ((*demos / "captures").string()).c_str());
+			ImGui::Text("ReShade effects: %s", reshade_capture::active() ?
+				"finish-effects hook registered" : "not connected (recording uses the game frame)");
+			ImGui::TextDisabled("ReShade capture requires an add-on enabled ReShade build with API 20.");
+			ImGui::SeparatorText("Avidemo / ProRes");
+			ImGui::SliderInt("Output FPS", &fps, 1, 240);
+			if (ImGui::IsItemDeactivatedAfterEdit())
+				GameUtil::Cbuf_AddText(LOCAL_CLIENT_0, std::format("demo_capture_fps {}", fps));
+			const char* profiles[] = { "Proxy", "LT", "422", "422 HQ", "4444", "4444 XQ" };
+			if (ImGui::Combo("ProRes profile", &profile, profiles, IM_ARRAYSIZE(profiles)))
+				GameUtil::Cbuf_AddText(LOCAL_CLIENT_0, std::format("demo_capture_profile {}", profile));
+			ImGui::TextDisabled("4444 requires a back buffer with full alpha; the game's 10-bit buffer supports profiles 0-3.");
+			ImGui::InputText("ffmpeg.exe path (optional)", ffmpeg_path, IM_ARRAYSIZE(ffmpeg_path));
+			if (ImGui::Button("Apply ffmpeg path") && ffmpeg_path[0])
+				GameUtil::Cbuf_AddText(LOCAL_CLIENT_0, std::format("demo_capture_ffmpeg \"{}\"", ffmpeg_path));
+			ImGui::TextDisabled("Leave blank to use ffmpeg.exe beside the game or on PATH.");
+			ImGui::InputText("File name (optional)", capture_name, IM_ARRAYSIZE(capture_name));
+			if (!demo_capture::recording())
+			{
+				if (ImGui::Button("Start recording", ImVec2(170, 30)))
+				{
+					std::string safe_name(capture_name);
+					for (char& ch : safe_name)
+						if (!((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') ||
+							(ch >= '0' && ch <= '9') || ch == '-' || ch == '_')) ch = '_';
+					GameUtil::Cbuf_AddText(LOCAL_CLIENT_0, safe_name.empty() ?
+						"demo_capture_start" : std::format("demo_capture_start {}", safe_name));
+					g_open = false; // A post-effect capture would include this window.
+				}
+			}
+			else if (ImGui::Button("Stop recording", ImVec2(170, 30)))
+				GameUtil::Cbuf_AddText(LOCAL_CLIENT_0, "demo_capture_stop");
+			ImGui::TextUnformatted(demo_capture::recording() ? "Recording" : "Idle");
+			ImGui::TextDisabled("F10 starts/stops recording without opening this window.");
+			if (demo_capture::recording())
+				ImGui::Text("Frames: %llu  Dropped: %llu",
+					static_cast<unsigned long long>(demo_capture::frame_count()),
+					static_cast<unsigned long long>(demo_capture::dropped_count()));
+			if (ImGui::CollapsingHeader("Display settings")) draw_display_tab();
+		}
+
 		void draw_ui()
 		{
 			if (g_open)
@@ -2306,9 +2377,9 @@ namespace demo_gui
 						draw_demos_tab();
 						ImGui::EndTabItem();
 					}
-					if (ImGui::BeginTabItem("Display"))
+					if (ImGui::BeginTabItem("Recording"))
 					{
-						draw_display_tab();
+						draw_recording_tab();
 						ImGui::EndTabItem();
 					}
 					if (ImGui::BeginTabItem("Dolly"))
@@ -2331,7 +2402,7 @@ namespace demo_gui
 						draw_host_tab();
 						ImGui::EndTabItem();
 					}
-					if (dev && ImGui::BeginTabItem("Bots"))
+					if (ImGui::BeginTabItem("Bots"))
 					{
 						draw_bots_tab();
 						ImGui::EndTabItem();
@@ -2378,7 +2449,7 @@ namespace demo_gui
 			// slot matches and their callers then do nothing, silently -- so
 			// "seek is broken" and "the ring is empty" are indistinguishable
 			// from the outside. Showing the ring makes the difference visible.
-			if (g_timeline && demo_native::native_playing())
+			if (g_timeline && !(demo_capture::recording() && reshade_capture::active()) && demo_native::native_playing())
 			{
 				const float prog = demo_native::playback_progress();
 				const auto ring = demo_native::keyframe_ring();
@@ -2468,7 +2539,7 @@ namespace demo_gui
 				ImGui::End();
 			}
 
-			if (g_timeline && demo_playback::is_playing())
+			if (g_timeline && !(demo_capture::recording() && reshade_capture::active()) && demo_playback::is_playing())
 			{
 				const auto bounds = demo_playback::time_bounds();
 				const auto cur = demo_playback::current_time();
@@ -2547,6 +2618,7 @@ namespace demo_gui
 			// Always sample so a key held down across a focus change cannot be seen as a
 			// fresh press when focus returns.
 			const bool f9 = edge(VK_F9, g_f9_edge);
+			const bool f10 = edge(VK_F10, g_f10_edge);
 			const bool ins = edge(VK_INSERT, g_insert_edge);
 			// TIMELINE IS ON F1, NOT F2.
 			// F2 is the engine's own theater camera cycle (CL_Demo_HandleAction
@@ -2567,6 +2639,9 @@ namespace demo_gui
 
 			if (ui_hotkeys_allowed())
 			{
+				if (f10 && !InternalConsole::DEVONLY_consoleOpen())
+					GameUtil::Cbuf_AddText(LOCAL_CLIENT_0,
+						demo_capture::recording() ? "demo_capture_stop" : "demo_capture_start");
 				if (f9 || ins)
 				{
 					g_open = !g_open;
@@ -2739,11 +2814,11 @@ namespace demo_gui
 			// Re-asserts the frame-rate cap while it is unlocked past 250.
 			// No-op below that -- see demo_display.hpp for why.
 			demo_display::tick();
+			cinebot::tick();
+			reshade_capture::tick();
 
-			// ⭐ CAPTURE GOES HERE, AND ONLY HERE. Before the ImGui block below, so
-			// the ProRes file contains clean game footage with no tool window in it.
-			// Moving this call after the overlay draw would silently start baking
-			// the UI into every recording.
+			// Ordinary capture reads before the tool UI. When the ReShade add-on
+			// callback is active, it reads the post-effect target instead.
 			demo_capture::on_present(swap);
 
 			// Skip all drawing while minimised. The back buffer is 0x0 then, so

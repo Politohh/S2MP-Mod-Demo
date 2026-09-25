@@ -12,6 +12,7 @@
 #include "demo/demo_playback.hpp"
 #include "demo/demo_camera.hpp"
 #include "demo/demo_capture.hpp"
+#include "net/cinebot.hpp"
 #include "demo/demo_display.hpp"
 #include "demo/demo_player.hpp"
 #include "demo/demo_recording.hpp"
@@ -82,6 +83,7 @@ namespace demo
 		// Bot renaming. Hooks the engine's own SV_AddBot, which a real player's
 		// connection cannot reach — so it structurally cannot touch a human.
 		bots::init();
+		cinebot::init();
 		// Puts mp_house (Groesten House) into the GAME's own private-match map
 		// picker -- hooks GameInfo_UpdateArenas and appends to its own table
 		// after the real mp/mapLoad.csv-driven list has been built.
