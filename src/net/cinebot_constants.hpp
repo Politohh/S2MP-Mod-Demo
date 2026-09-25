@@ -29,6 +29,8 @@ namespace s2cinebot
 		inline constexpr std::uintptr_t SV_SetAssignedTeam = 0x6E1410;
 		inline constexpr std::uintptr_t G_SetPlayerOrigin = 0x548820;
 		inline constexpr std::uintptr_t G_SetPlayerAngles = 0x548930;
+		// Final native bot usercmd writer (verified in the matching runtime image).
+		inline constexpr std::uintptr_t SV_BotBuildUsercmd = 0x69E970;
 		inline constexpr std::uintptr_t SV_LinkEntity = 0x6F97E0;
 		inline constexpr std::uintptr_t SV_IsTestClient = 0x6C4160;
 		inline constexpr std::uintptr_t SV_RefreshTestClient = 0x6C1E00;

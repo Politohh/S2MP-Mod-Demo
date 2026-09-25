@@ -5,6 +5,7 @@
 #include "Console.hpp"
 #include "FuncPointers.h"
 #include "GameUtil.hpp"
+#include "Hook.hpp"
 
 #include <array>
 #include <atomic>
@@ -54,6 +55,16 @@ namespace
 		vec3 rush_target{};
 	};
 
+	struct rush_command
+	{
+		void* entity{};
+		vec3 origin{};
+		vec3 angles{};
+		float forward_x{};
+		float forward_y{};
+		float run_distance{};
+	};
+
 	std::uintptr_t game_base{};
 	std::filesystem::path module_directory;
 	std::mutex log_mutex;
@@ -72,9 +83,20 @@ namespace
 	bool use_held{};
 	inline constexpr std::size_t kMaxTrackedBots = 64;
 	std::array<bot_state, kMaxTrackedBots> bots{};
+	std::array<rush_command, kMaxTrackedBots> rush_commands{};
+	std::array<std::atomic_uint, kMaxTrackedBots> rush_command_hits{};
+	std::mutex rush_mutex;
+	using bot_usercmd_fn = std::int64_t(*)(void*, void*);
+	bot_usercmd_fn original_bot_usercmd{};
+	bool rush_hook_ready{};
 	std::atomic_int selected_bot_slot{-1};
 	float placement_distance = 250.0f;
 	float last_trace_fraction = 1.0f;
+	inline constexpr std::size_t kUsercmdButtonsOffset = 8;
+	inline constexpr std::size_t kUsercmdForwardOffset = 52;
+	inline constexpr std::size_t kUsercmdRightOffset = 53;
+	inline constexpr std::size_t kUsercmdUpOffset = 54;
+	inline constexpr std::uint64_t kBotSprintButton = 0x2;
 
 	template <typename T>
 	T at(const std::uintptr_t rva)
@@ -235,19 +257,66 @@ namespace
 		return std::hypot(std::hypot(a.x - b.x, a.y - b.y), a.z - b.z);
 	}
 
-	bool face_player(void* entity, const vec3& from, const vec3& target)
+	bool look_at(const vec3& from, const vec3& target, vec3& angles)
 	{
 		const float dx = target.x - from.x;
 		const float dy = target.y - from.y;
 		const float planar = std::hypot(dx, dy);
 		if (planar < 16.0f) return false;
 		constexpr float radians_to_degrees = 57.29577951308232f;
-		const float angles[3] = {
+		angles = {
 			-std::atan2(target.z - from.z, planar) * radians_to_degrees,
 			std::atan2(dy, dx) * radians_to_degrees, 0.0f
 		};
-		at<void(*)(void*, const float*)>(rva::G_SetPlayerAngles)(entity, angles);
 		return true;
+	}
+
+	void clear_rush_command(const int slot)
+	{
+		if (slot < 0 || static_cast<std::size_t>(slot) >= rush_commands.size()) return;
+		std::lock_guard lock(rush_mutex);
+		rush_commands[static_cast<std::size_t>(slot)] = {};
+	}
+
+	void clear_all_rush_commands()
+	{
+		std::lock_guard lock(rush_mutex);
+		rush_commands = {};
+	}
+
+	std::int64_t bot_usercmd_hook(void* bot_input, void* command)
+	{
+		const auto result = original_bot_usercmd(bot_input, command);
+		if (!bot_input || !command) return result;
+		// The first field of the 144-byte native bot command record is the
+		// entity number. Do not touch unrelated game bots or agent commands.
+		const int slot = *static_cast<const std::int16_t*>(bot_input);
+		if (slot < 0 || static_cast<std::size_t>(slot) >= rush_commands.size()) return result;
+		rush_command rush{};
+		{
+			std::lock_guard lock(rush_mutex);
+			rush = rush_commands[static_cast<std::size_t>(slot)];
+		}
+		if (!rush.entity || rush.entity != at<std::byte*>(rva::g_entities) +
+			static_cast<std::size_t>(slot) * kEntityStride)
+			return result;
+		if (*reinterpret_cast<const int*>(static_cast<const std::byte*>(rush.entity) + kEntityHealthOffset) <= 0)
+			return result;
+		const auto current = entity_origin(rush.entity);
+		const float progress = (current.x - rush.origin.x) * rush.forward_x +
+			(current.y - rush.origin.y) * rush.forward_y;
+		auto* bytes = static_cast<std::byte*>(command);
+		// Override the native AI's forward/side motion AFTER it has built the
+		// usercmd. Physics still handles running, collision and death animation.
+		const bool running = progress < rush.run_distance - 48.0f;
+		bytes[kUsercmdForwardOffset] = std::byte(running ? 127 : 0);
+		bytes[kUsercmdRightOffset] = std::byte(0);
+		bytes[kUsercmdUpOffset] = std::byte(0);
+		auto* buttons = reinterpret_cast<std::uint64_t*>(bytes + kUsercmdButtonsOffset);
+		*buttons = running ? kBotSprintButton : 0;
+		at<void(*)(void*, const float*)>(rva::G_SetPlayerAngles)(rush.entity, &rush.angles.x);
+		++rush_command_hits[static_cast<std::size_t>(slot)];
+		return result;
 	}
 
 	unsigned int lui_notify_event()
@@ -349,6 +418,7 @@ namespace
 				if (state > 0) bot.ever_connected = true;
 				if (bot.ever_connected && state == 0)
 				{
+					clear_rush_command(bot.slot);
 					log("Bot slot " + std::to_string(bot.slot) + " disconnected before becoming alive.");
 					bot.active = false;
 					return;
@@ -395,6 +465,7 @@ namespace
 		{
 			if (bot.rushing)
 			{
+				clear_rush_command(bot.slot);
 				bot.rushing = false;
 				bot.frozen = true; // Respawn returns to the saved stationary setup.
 			}
@@ -410,7 +481,8 @@ namespace
 				distance(current, bot.rush_target);
 			log("F4 rush observation: bot " + std::to_string(bot.slot) +
 				" moved " + std::to_string(moved) + " units, " +
-				std::to_string(toward) + " toward the player in 1.5s.");
+				std::to_string(toward) + " toward the player in 1.5s; overridden commands=" +
+				std::to_string(rush_command_hits[static_cast<std::size_t>(bot.slot)].load()) + '.');
 			bot.rush_reported = true;
 		}
 
@@ -428,6 +500,7 @@ namespace
 		update_pending = false;
 		if (!in_custom_game())
 		{
+			clear_all_rush_commands();
 			bots = {};
 			selected_bot_slot = -1;
 			publish_bots();
@@ -478,6 +551,7 @@ namespace
 		at<void(*)(char, int)>(rva::SV_SetAssignedTeam)(static_cast<char>(slot), assigned_team);
 		const int result = at<spawn_test_client_fn>(rva::SV_SpawnTestClient)(entity);
 		auto& bot = bots[static_cast<std::size_t>(slot)];
+		clear_rush_command(slot);
 		bot = {};
 		bot.entity = entity;
 		bot.slot = slot;
@@ -509,6 +583,7 @@ namespace
 		vec3 anchor{};
 		if (!capture_crosshair(anchor)) return;
 		bot->anchor = anchor;
+		clear_rush_command(bot->slot);
 		bot->frozen = true;
 		bot->rushing = false;
 		if (bot->was_alive) set_player_origin(bot->entity, bot->anchor);
@@ -528,6 +603,7 @@ namespace
 			return;
 		}
 		bot->frozen = !bot->frozen;
+		clear_rush_command(bot->slot);
 		bot->rushing = false;
 		auto* entity = static_cast<std::byte*>(bot->entity);
 		if (auto* game_client = *reinterpret_cast<std::byte**>(entity + kEntityClientOffset))
@@ -554,7 +630,13 @@ namespace
 		{
 			if (!valid_bot_entity(bot) || !bot.was_alive) continue;
 			const auto origin = entity_origin(bot.entity);
-			if (!face_player(bot.entity, origin, target)) continue;
+			vec3 angles{};
+			if (!look_at(origin, target, angles)) continue;
+			const auto run_distance = std::hypot(target.x - origin.x, target.y - origin.y);
+			const rush_command command{bot.entity, origin, angles,
+				(target.x - origin.x) / run_distance,
+				(target.y - origin.y) / run_distance, run_distance};
+			at<void(*)(void*, const float*)>(rva::G_SetPlayerAngles)(bot.entity, &angles.x);
 			bot.rush_origin = origin;
 			bot.rush_target = target;
 			bot.rush_started = GetTickCount64();
@@ -564,11 +646,16 @@ namespace
 			if (auto* game_client = *reinterpret_cast<std::byte**>(
 				static_cast<std::byte*>(bot.entity) + kEntityClientOffset))
 				*reinterpret_cast<int*>(game_client + kGameClientFlagsOffset) &= ~4;
+			{
+				std::lock_guard lock(rush_mutex);
+				rush_commands[static_cast<std::size_t>(bot.slot)] = command;
+			}
+			rush_command_hits[static_cast<std::size_t>(bot.slot)] = 0;
 			++released;
 		}
 		publish_bots();
-		log("F4 faced and released " + std::to_string(released) +
-			" bot(s) toward the local player. Native AI movement is under test.");
+		log("F4 directed " + std::to_string(released) +
+			" bot(s) toward the captured player position using native movement commands.");
 	}
 
 	bool queue_main_thread(void(__cdecl* callback)())
@@ -632,12 +719,16 @@ namespace cinebot
 		placement_distance = static_cast<float>(GetPrivateProfileIntW(L"Placement", L"FallbackDistance", 250,
 			(module_directory / "S2CineBot.ini").c_str()));
 		if (placement_distance < 25.0f || placement_distance > 5000.0f) placement_distance = 250.0f;
+		rush_hook_ready = executable_address(at<void*>(rva::SV_BotBuildUsercmd)) &&
+			Hook::create("CineBot_final_usercmd", game_base + rva::SV_BotBuildUsercmd,
+				&bot_usercmd_hook, &original_bot_usercmd) && original_bot_usercmd;
+		log(std::string("Directed bot movement hook: ") + (rush_hook_ready ? "ready." : "unavailable; F4 disabled."));
 		g_available = true;
 		activate_binding = Functions::_Key_GetBindingForCommand ?
 			Functions::_Key_GetBindingForCommand("+activate") : 0;
 		ads_binding = Functions::_Key_GetBindingForCommand ?
 			Functions::_Key_GetBindingForCommand("+toggleads_throw") : 0;
-		log("Integrated CineBot ready. ADS + bound Use=spawn, F4=face/release all, F7=move, F8=toggle freeze. Use binding index " +
+		log("Integrated CineBot ready. ADS + bound Use=spawn, F4=straight run, F7=move, F8=toggle freeze. Use binding index " +
 			std::to_string(activate_binding) + ", ADS binding index " +
 			std::to_string(ads_binding) + '.');
 		GameUtil::addCommand("cinebot_spawn", [] { spawn_at_crosshair(); });
@@ -694,7 +785,7 @@ namespace cinebot
 
 	void rush_all_toward_player()
 	{
-		if (g_available.load()) queue_once(rush_pending, rush_on_main_thread, "rush all");
+		if (g_available.load() && rush_hook_ready) queue_once(rush_pending, rush_on_main_thread, "rush all");
 	}
 
 	void on_game_key(const int key, const int down)
