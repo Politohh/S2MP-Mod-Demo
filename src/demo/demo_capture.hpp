@@ -31,12 +31,11 @@ struct ID3D11Texture2D;
 // thread a clock that only advances when it renders is a deadlock waiting to
 // happen, and it is not something to ship unproven.
 //
-// So this captures every PRESENTED frame and tags the stream at the output rate
-// below. The workflow that gets you smooth footage today is the one the slow
-// motion work just unlocked: slow the demo to a stable rate (the tester found
-// 0.05 to be the practical floor), let the engine render comfortably, and
-// capture at 60. Frame lock
-// proper is the next step, and it is a separate, testable change.
+// So this captures every PRESENTED frame and tags the stream at the selected
+// constant output rate. Uneven source delivery or readback pressure can cause
+// exported motion to jolt even when the live dolly preview looks smooth; the
+// capture stop log reports timing and queue pressure to diagnose this. True
+// frame lock is a separate, testable change.
 namespace demo_capture
 {
 	void init();

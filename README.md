@@ -2,7 +2,7 @@
 
 An unofficial Call of Duty: WWII (S2) multiplayer demo and camera toolkit. This repository continues the [`demo-w2dr` branch of josh155/S2MP-Mod](https://github.com/josh155/S2MP-Mod/tree/demo-w2dr), which is itself a fork of [Rattpak/S2MP-Mod](https://github.com/Rattpak/S2MP-Mod). The original commit history is retained. See [CREDITS.md](CREDITS.md) for provenance and third-party notices.
 
-This is an experimental, game-build-specific mod. The numbered release package is for testing; it is not a game copy. **Build 29** is the current package. The DLL prints `[s2mp] package build 29` in `main/s2mp_console.log` so test reports can be tied to the exact binary.
+This is an experimental, game-build-specific mod. The numbered release package is for testing; it is not a game copy. **Build 30** is the current package. The DLL prints `[s2mp] package build 30` in `main/s2mp_console.log` so test reports can be tied to the exact binary.
 
 ## Get started
 
@@ -17,8 +17,8 @@ The ZIP includes installation instructions and SHA-256 hashes. The game executab
 
 | Area | Current state |
 | --- | --- |
-| Demos and dolly | Native demo playback, free camera, camera points, path playback, rewinds, FOV, and world-camera roll. Build 29 tests a fractional camera clock for smoother 0.05× moves; in-game validation is pending. |
-| Recording | Native demo recording and an FFmpeg/ProRes capture tab. ReShade effects require a compatible full add-on ReShade installation; see the package's `RESHADE-SETUP.txt`. **F5** starts or stops capture. |
+| Demos and dolly | Native demo playback, free camera, camera points, path playback, rewinds, FOV, and world-camera roll. Build 30 tests an optional fractional camera clock for 0.05× moves (`dolly_slow_clock 0` disables it); in-game validation is pending. |
+| Recording | Native demo recording and an FFmpeg/ProRes capture tab. Build 30 logs source-frame cadence and capture pressure at stop to diagnose export-only stutter. ReShade effects require a compatible full add-on ReShade installation; see the package's `RESHADE-SETUP.txt`. **F5** starts or stops capture. |
 | CineBot | In a private/custom match, **ADS + bound Use** spawns at the crosshair, **F7** moves the selected bot, and **F8** toggles freeze. **F4** attempts a straight run toward a snapshot of the player's position. The Build 28 F4 command interception is **awaiting in-game validation**. |
 | HUD | The **No HUD** control toggles the game's `cg_draw2D` setting. |
 | Bone Cam | Still experimental; do not rely on it for a shoot. |
@@ -33,6 +33,6 @@ Release builds no longer copy files into a developer-specific game directory. Us
 
 ## Feedback and provenance
 
-For a problem report, include the numbered ZIP name, the fresh `main/s2mp_console.log`, and, for bot issues, `S2CineBot.log` from the game directory. Describe what the game visibly did; an offline build or test cannot prove in-game behavior. See [Build 29 release notes](docs/RELEASE-BUILD-29.md) for this package's test focus.
+For a problem report, include the numbered ZIP name, the fresh `main/s2mp_console.log`, and, for bot issues, `S2CineBot.log` from the game directory. Describe what the game visibly did; an offline build or test cannot prove in-game behavior. See [Build 30 release notes](docs/RELEASE-BUILD-30.md) for this package's test focus.
 
 This repository does **not** declare a new license for the inherited S2MP code. Neither [josh155/S2MP-Mod](https://github.com/josh155/S2MP-Mod) nor [Rattpak/S2MP-Mod](https://github.com/Rattpak/S2MP-Mod) currently declares a repository license. Their respective copyrights remain with their authors. Third-party files retain their own notices.

@@ -35,6 +35,7 @@
 #include "Hook.hpp"
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <cmath>
 #include <format>
@@ -191,6 +192,7 @@ namespace dolly
 		bool g_logged_first_projection = false;
 		// Only drive() (the client thread) touches this clock.
 		dolly_slow_clock g_slow_clock;
+		std::atomic<bool> g_slow_clock_enabled{ true };
 
 		// ---- safety ----------------------------------------------------------
 		// RULE A6 — `if (!p)` is not enough in this game: a global belonging to an
@@ -586,7 +588,7 @@ namespace dolly
 			return;
 		}
 		double t = engine_t;
-		if (demo_native::native_playing())
+		if (demo_native::native_playing() && g_slow_clock_enabled.load(std::memory_order_relaxed))
 		{
 			const double wall_ms = std::chrono::duration<double, std::milli>(
 				std::chrono::steady_clock::now().time_since_epoch()).count();
@@ -1103,6 +1105,19 @@ namespace dolly
 
 		GameUtil::addCommand("dolly_on", [] { set_enabled(true); });
 		GameUtil::addCommand("dolly_off", [] { set_enabled(false); });
+		GameUtil::addCommand("dolly_slow_clock", []
+		{
+			auto* args = GameUtil::getCmdArgs();
+			if (!args || args->argc[args->nesting] < 2)
+			{
+				Console::printf("[dolly] 0.05x camera clock: %s (dolly_slow_clock <0|1>)",
+					g_slow_clock_enabled.load() ? "ON" : "OFF");
+				return;
+			}
+			g_slow_clock_enabled.store(GameUtil::safeStringToInt(args->argv[args->nesting][1]) != 0);
+			Console::printf("[dolly] 0.05x camera clock: %s",
+				g_slow_clock_enabled.load() ? "ON" : "OFF");
+		});
 
 		GameUtil::addCommand("dolly_markers", []
 		{

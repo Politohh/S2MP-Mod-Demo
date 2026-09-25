@@ -58,6 +58,50 @@ namespace demo_capture
 		std::atomic<std::uint64_t> g_dropped{ 0 };
 		std::string g_stop_reason;
 
+		// Present/ReShade callback timestamps are measured before GPU readback.
+		// The rawvideo pipe assigns exactly 1/g_fps seconds to every accepted
+		// frame, so source cadence matters even when ffmpeg drops nothing.
+		struct timing_stats
+		{
+			std::uint64_t callbacks = 0;
+			std::uint64_t short_intervals = 0;
+			std::uint64_t long_intervals = 0;
+			std::uint64_t very_long_intervals = 0;
+			std::uint64_t blocked_frames = 0;
+			std::size_t max_queue_depth = 0;
+			double first_ms = 0.0;
+			double last_ms = 0.0;
+			double max_interval_ms = 0.0;
+			double max_readback_ms = 0.0;
+			double max_queue_wait_ms = 0.0;
+		};
+		std::mutex g_timing_lock;
+		timing_stats g_timing;
+
+		[[nodiscard]] double monotonic_ms()
+		{
+			return std::chrono::duration<double, std::milli>(
+				std::chrono::steady_clock::now().time_since_epoch()).count();
+		}
+
+		void note_callback(const double now)
+		{
+			std::lock_guard<std::mutex> lock(g_timing_lock);
+			const double frame_ms = 1000.0 / (g_fps > 0 ? g_fps : 60);
+			if (g_timing.callbacks == 0)
+				g_timing.first_ms = now;
+			else
+			{
+				const double interval = now - g_timing.last_ms;
+				if (interval < frame_ms * 0.5) ++g_timing.short_intervals;
+				if (interval > frame_ms * 1.5) ++g_timing.long_intervals;
+				if (interval > frame_ms * 2.5) ++g_timing.very_long_intervals;
+				g_timing.max_interval_ms = (std::max)(g_timing.max_interval_ms, interval);
+			}
+			g_timing.last_ms = now;
+			++g_timing.callbacks;
+		}
+
 		// ---- the pipe queue ----------------------------------------------
 		// The Present thread does the GPU read-back (it has to -- that is where the
 		// swap chain is), then hands the bytes over. Writing to a pipe can block
@@ -470,6 +514,10 @@ namespace demo_capture
 		g_stop_reason.clear();
 		g_frames = 0;
 		g_dropped = 0;
+		{
+			std::lock_guard<std::mutex> lock(g_timing_lock);
+			g_timing = {};
+		}
 		g_recording.store(true, std::memory_order_relaxed);
 
 		Console::printf("[capture] armed: %s", g_out_path.string().c_str());
@@ -499,6 +547,30 @@ namespace demo_capture
 			static_cast<unsigned long long>(frames),
 			static_cast<double>(frames) / (g_fps > 0 ? g_fps : 60), g_fps,
 			dropped ? std::format(", {} dropped", dropped).c_str() : "");
+		timing_stats timing;
+		{
+			std::lock_guard<std::mutex> lock(g_timing_lock);
+			timing = g_timing;
+		}
+		if (timing.callbacks > 1 && timing.last_ms > timing.first_ms)
+		{
+			const double elapsed = (timing.last_ms - timing.first_ms) / 1000.0;
+			Console::printf("[capture] source cadence: %llu callbacks / %.2f s "
+				"(%.1f fps observed); output %.2f s; intervals <half-frame %llu, "
+				">1.5 frames %llu, >2.5 frames %llu, max %.1f ms",
+				static_cast<unsigned long long>(timing.callbacks), elapsed,
+				static_cast<double>(timing.callbacks - 1) / elapsed,
+				static_cast<double>(frames) / (g_fps > 0 ? g_fps : 60),
+				static_cast<unsigned long long>(timing.short_intervals),
+				static_cast<unsigned long long>(timing.long_intervals),
+				static_cast<unsigned long long>(timing.very_long_intervals),
+				timing.max_interval_ms);
+			Console::printf("[capture] pipeline: max readback+copy %.1f ms, "
+				"max queue wait %.1f ms, waits >1 frame %llu, queue peak %zu/%zu",
+				timing.max_readback_ms, timing.max_queue_wait_ms,
+				static_cast<unsigned long long>(timing.blocked_frames),
+				timing.max_queue_depth, MAX_QUEUED);
+		}
 		Console::printf("[capture] %s%s", path.string().c_str(),
 			ec ? "   ⚠ could not stat the file" :
 			std::format("   ({:.1f} MB)", static_cast<double>(size) / (1024.0 * 1024.0)).c_str());
@@ -511,6 +583,8 @@ namespace demo_capture
 			if (back) back->Release();
 			return;
 		}
+		const double callback_ms = monotonic_ms();
+		note_callback(callback_ms);
 
 		D3D11_TEXTURE2D_DESC desc{};
 		back->GetDesc(&desc);
@@ -616,6 +690,7 @@ namespace demo_capture
 			return;
 		}
 
+		const double readback_begin_ms = monotonic_ms();
 		if (g_resolve)
 		{
 			g_context->ResolveSubresource(g_resolve, 0, back, 0, desc.Format);
@@ -647,7 +722,10 @@ namespace demo_capture
 			src += mapped.RowPitch;
 		}
 		g_context->Unmap(g_staging, 0);
+		const double readback_ms = monotonic_ms() - readback_begin_ms;
 
+		const double queue_begin_ms = monotonic_ms();
+		std::size_t queue_depth = 0;
 		{
 			std::unique_lock<std::mutex> lock(g_queue_lock);
 			// Wait briefly for room. A short block keeps every frame when the
@@ -656,10 +734,28 @@ namespace demo_capture
 			if (!g_queue_cv.wait_for(lock, std::chrono::milliseconds(100),
 				[] { return g_queue.size() < MAX_QUEUED; }))
 			{
+				const double queue_wait_ms = monotonic_ms() - queue_begin_ms;
+				{
+					std::lock_guard<std::mutex> timing_lock(g_timing_lock);
+					g_timing.max_readback_ms = (std::max)(g_timing.max_readback_ms, readback_ms);
+					g_timing.max_queue_wait_ms = (std::max)(g_timing.max_queue_wait_ms, queue_wait_ms);
+					++g_timing.blocked_frames;
+					g_timing.max_queue_depth = MAX_QUEUED;
+				}
 				++g_dropped;
 				return;
 			}
 			g_queue.push_back(std::move(frame));
+			queue_depth = g_queue.size();
+		}
+		const double queue_wait_ms = monotonic_ms() - queue_begin_ms;
+		{
+			std::lock_guard<std::mutex> lock(g_timing_lock);
+			g_timing.max_readback_ms = (std::max)(g_timing.max_readback_ms, readback_ms);
+			g_timing.max_queue_wait_ms = (std::max)(g_timing.max_queue_wait_ms, queue_wait_ms);
+			g_timing.max_queue_depth = (std::max)(g_timing.max_queue_depth, queue_depth);
+			if (queue_wait_ms > 1000.0 / (g_fps > 0 ? g_fps : 60))
+				++g_timing.blocked_frames;
 		}
 		g_queue_cv.notify_one();
 		++g_frames;

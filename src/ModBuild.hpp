@@ -37,8 +37,9 @@
 //  26  4444 opaque capture, F5 recording, ADS+Use spawn, experimental F4 bot run
 //  27  F4 native bot usercmd override for straight sprint to snapshot target
 //  28  hook the test-client command consumer; keep F4 frozen until intercepted
-//  29  interpolate the dolly clock at extreme slow motion for smooth ProRes moves
+//  29  experimental fractional dolly clock (source tag only; not shared)
+//  30  export-stutter timing diagnostics and optional fractional dolly clock
 namespace mod_build
 {
-	constexpr int NUMBER = 29;
+	constexpr int NUMBER = 30;
 }
