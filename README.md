@@ -1,151 +1,38 @@
-# S2MP-Mod
+# S2MP Mod — Polito's WWII cinematic build
 
-A demo recorder, player and camera rig for Call of Duty: WWII (S2) multiplayer.
+An unofficial Call of Duty: WWII (S2) multiplayer demo and camera toolkit. This repository continues the [`demo-w2dr` branch of josh155/S2MP-Mod](https://github.com/josh155/S2MP-Mod/tree/demo-w2dr), which is itself a fork of [Rattpak/S2MP-Mod](https://github.com/Rattpak/S2MP-Mod). The original commit history is retained. See [CREDITS.md](CREDITS.md) for provenance and third-party notices.
 
-Record a match, play it back, put a camera on it, film it.
+This is an experimental, game-build-specific mod. The numbered release package is for testing; it is not a game copy. **Build 28** is the current package. The DLL prints `[s2mp] package build 28` in `main/s2mp_console.log` so test reports can be tied to the exact binary.
 
----
+## Get started
 
-## Quick start
+1. Download the numbered ZIP from this repository's **Releases** page. Extract `S2MP-Launcher.exe` and `s2mp-mod.dll` beside your own `s2_mp64_ship.exe`.
+2. Close the game before replacing either file. Start it with `S2MP-Launcher.exe`.
+3. Open the tools window with **F9** or **Insert**. **F1** toggles the timeline.
+4. Record or select a multiplayer demo on the **Demos** tab. In **Dolly**, enable **Drive the camera**, place points, and press **J** to rewind and play the path.
 
-1. Launch the game with the mod (`tools/Launch-S2.ps1`).
-2. Play a match. **It is recorded automatically.**
-3. Back at the menu, press **F9** (or **Insert**) to open the tools window.
-4. Pick the demo from the list, press **Play**.
-5. Press **Free** under Camera and fly.
+The ZIP includes installation instructions and SHA-256 hashes. The game executable, ReShade, and FFmpeg are not redistributed here.
 
-That is the whole workflow. Nothing else needs turning on.
+## What is in this build
 
----
+| Area | Current state |
+| --- | --- |
+| Demos and dolly | Native demo playback, free camera, camera points, path playback, rewinds, FOV, and world-camera roll. The remote tester reported dolly and skipping functional before Build 28; repeat testing is still useful. |
+| Recording | Native demo recording and an FFmpeg/ProRes capture tab. ReShade effects require a compatible full add-on ReShade installation; see the package's `RESHADE-SETUP.txt`. **F5** starts or stops capture. |
+| CineBot | In a private/custom match, **ADS + bound Use** spawns at the crosshair, **F7** moves the selected bot, and **F8** toggles freeze. **F4** attempts a straight run toward a snapshot of the player's position. The Build 28 F4 command interception is **awaiting in-game validation**. |
+| HUD | The **No HUD** control toggles the game's `cg_draw2D` setting. |
+| Bone Cam | Still experimental; do not rely on it for a shoot. |
 
-## The window
+Camera shortcuts: **K** adds a dolly point, **L** removes the last point, **J** rewinds and plays the path, and **Left Arrow** seeks back ten seconds. Some shortcuts are ignored while the UI is focused. In free camera, the mouse wheel adjusts roll and **Alt + wheel** adjusts FOV. Camera speed can be reduced in the UI. Demo speed can reach **0.05×**; lower speeds previously caused severe stutter on the test machine.
 
-**F9** or **Insert** opens it. **F2** toggles the on-screen timeline.
+## Build from source
 
-| Tab | What it is |
-|---|---|
-| **Demos** | Recording switch, the demo library, and the playback transport. |
-| **Dolly** | A camera path. Fly to a spot, add a point, repeat; the camera then flies the curve. |
-| **Bone Cam** | Locks the camera to a player's bone (head, hands, weapon) while you keep mouse look. |
+The source and dependency trees are in this repository. On Windows, use Visual Studio 2022 or later with the C++ desktop workload and Windows SDK. Generate the solution with `tools/premake5.exe vs2022`, then build `s2mp-mod.sln` as **Release | x64**. The output is under `bin/Release/`. The launcher EXE is a separately supplied upstream binary; this repository builds the mod DLL.
 
-Two demo formats appear in one list:
+Release builds no longer copy files into a developer-specific game directory. Use your own install path when testing. Engine hooks and CineBot offsets target the exact WWII executable described in `src/net/cinebot_constants.hpp`; other game versions are not validated.
 
-- **engine** — the game's own `.demo`, in `main/demo`. This is what recording produces.
-- **custom** — the mod's own `.dm_s2`, in `demos`.
+## Feedback and provenance
 
-You do not have to care which is which. Play, Stop, Pause, seek and speed all
-work on both — the mod dispatches on the file extension.
+For a problem report, include the numbered ZIP name, the fresh `main/s2mp_console.log`, and, for bot issues, `S2CineBot.log` from the game directory. Describe what the game visibly did; an offline build or test cannot prove in-game behavior. See [Build 28 release notes](docs/RELEASE-BUILD-28.md) for this package's test focus.
 
----
-
-## Commands
-
-Everything the product does, from the console:
-
-| Command | |
-|---|---|
-| `demo_list` | list every demo, both formats |
-| `demo_play <name>` | play one (the bare name is enough) |
-| `demo_stop` | |
-| `demo_pause` | |
-| `demo_seek <seconds>` | negative rewinds |
-| `demo_speed <0.1 .. 4.0>` | slows the HUD and the audio pitch with the picture |
-| `demo_record <0\|1>` | auto-record every match (on by default) |
-| `demo_camera 1 \| 3 \| free` | first person / third person / free camera |
-| `demo_fov <45..160>` | field of view |
-| `demo_thirdperson <dist> [height]` | third-person framing (stock 85 35) |
-| `demo_roll <-180..180>` | dutch angle on the free camera |
-| `demo_screenshot` | the engine's tiled high-resolution capture |
-| `demo_autoname <0\|1>` | rename recordings to `<map>_<date>_<time>` (on) |
-| `demo_ui` | open the window |
-
-### Clips
-
-While an engine demo is playing, **Mark In** / **Mark Out** record a segment,
-**Preview** plays the marked clip and **Clear** discards them. These drive the
-game's own clip system (`cl_demo_savesegment`), which ships complete but has no
-menu.
-
-Plus `dolly`, `bonecam`, `names`, `crosshair_sway` and `crosshair_dot` for the
-camera and overlay tools — each prints its own usage when run with no argument.
-
-### Wii pointer aiming
-
-Aiming exactly the way the Wii Call of Duties did it: the mouse moves a free
-reticle, the camera holds still inside a bounding box and turns when the
-reticle leaves it, and bullets go where the reticle is. Live play only; it
-steps aside whenever either demo system owns the camera. A Dolphinbar-style
-Wiimote that presents itself as a mouse works unchanged.
-
-| Command | |
-|---|---|
-| `wii_aim [0\|1]` | toggle (off by default) |
-| `wii_aim_box <w> [h]` | bounding box as a fraction of the half-screen (0.50 0.40) |
-| `wii_aim_speed <deg/s>` | camera turn speed with the reticle at the screen edge (180) |
-| `wii_aim_curve <1..4>` | how the turn ramps up past the box edge (1.5) |
-| `wii_aim_ads <0..1>` | box multiplier while aiming down sights (0.5) |
-| `wii_aim_lock_scoped [0\|1]` | scoped weapons pin the reticle to centre (on) |
-| `wii_aim_reticle [0\|1]`, `wii_aim_reticle_size <px>` | the drawn reticle |
-| `wii_aim_showbox [0\|1]` | draw the bounding box while tuning |
-| `wii_aim_status` | live cursor / camera / FOV-ratio readout |
-
-ADS is inferred from the field of view narrowing (`wii_aim_ads_threshold`
-tunes it) until the player-state ADS field is proven. The viewmodel still
-points at screen centre in this version.
-
----
-
-## Recording
-
-The game writes the demo itself, from the moment you connect, so there is no
-button to press mid-match. Turning auto-record on or off takes effect on the
-**next** match — the engine only asks once, at cgame init.
-
-Public-match demos are repaired automatically when recording stops. If the game
-is killed mid-match that never runs, and the demo will not play; select it and
-press **Repair**. It is safe on anything — a demo that does not need it is left
-alone.
-
----
-
-## Developer mode
-
-The mod is also a reverse-engineering workbench. That half — matchmaking, host
-forcing, bots, HUD model internals, and about a hundred diagnostic commands — is
-**hidden, not removed**.
-
-```
-s2_dev 1
-```
-
-or the checkbox at the bottom of the window. It adds the **Servers**, **Host**,
-**Bots** and **Players** tabs and registers every diagnostic command. The setting
-persists across restarts.
-
-Nothing is deleted when it is off. Commands registered during a session stay
-usable for that session.
-
----
-
-## Layout
-
-```
-src/demo/     demo_player   one list, one transport, dispatching to both engines
-              demo_native   the game's own .demo system (record + playback)
-              demo_playback the custom .dm_s2 theater
-              demo_gui      the window
-              dolly, bonecam, theater_camera
-src/hud/      nametags, crosshair, wii_aim, minimal HUD, broadcaster
-src/net/      force_host, server_browser, bots, dlc      (developer mode)
-src/DevMode   the product / workbench split
-```
-
-`CLAUDE.md` is the engineering record: what is proven, what is disproven, and
-which approaches have already failed. Read it before changing engine-facing code.
-
----
-
-## Building
-
-Visual Studio 2026, `s2mp-mod.sln`, Release / x64. The Release build copies the
-DLL to the game directory automatically.
+This repository does **not** declare a new license for the inherited S2MP code. Neither [josh155/S2MP-Mod](https://github.com/josh155/S2MP-Mod) nor [Rattpak/S2MP-Mod](https://github.com/Rattpak/S2MP-Mod) currently declares a repository license. Their respective copyrights remain with their authors. Third-party files retain their own notices.

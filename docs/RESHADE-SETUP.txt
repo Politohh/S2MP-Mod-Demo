@@ -1,0 +1,15 @@
+ReShade effects in ProRes recordings
+
+The mod has an optional ReShade add-on API finish-effects hook. To
+capture post-effects, install a compatible ReShade FULL ADD-ON SUPPORT
+build from the official site: https://reshade.me/
+
+Select your own s2_mp64_ship.exe and the game's DirectX 10/11/12 API.
+Keep or restore your ReShade preset. The Recording tab should report
+that the finish-effects hook is registered. After a short test capture,
+check main\s2mp_console.log for "first ReShade post-effects frame
+captured" and compare a frame in the MOV with the game display.
+
+If the hook is unavailable, normal game-frame capture still works but
+the recording may not show ReShade effects. ReShade and FFmpeg binaries
+are not included in this package; obtain them from their publishers.

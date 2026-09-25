@@ -173,13 +173,6 @@ workspace "s2mp-mod"
         filter "configurations:Release"
             runtime "Release"
             optimize "On"
-            -- Auto-deploy to the local WWII install after every Release build. This is S2MP-Mod's own
-            -- deploy target only -- separate from, and does not touch, h1-mod's own deploy to
-            -- F:\SteamLibrary\steamapps\common\Call of Duty Modern Warfare Remastered.
-            postbuildcommands {
-                '{COPY} "%{cfg.buildtarget.abspath}" "C:/Users/joshu/OneDrive/Documents/WWII"',
-                '{COPY} "%{cfg.buildtarget.directory}%{cfg.buildtarget.basename}.pdb" "C:/Users/joshu/OneDrive/Documents/WWII"'
-            }
 
 group "Dependencies"
 dependencies.projects()     
