@@ -21,4 +21,7 @@ namespace cinebot
 	void spawn_at_crosshair();
 	void move_selected_to_crosshair();
 	void toggle_selected_freeze();
+	void rush_all_toward_player();
+	// Called from the existing CL_KeyEvent hook, using the game's bound Use key.
+	void on_game_key(int key, int down);
 }

@@ -60,7 +60,7 @@ namespace demo_gui
 		bool g_imgui_ready = false;
 		bool g_toggle_edge = false;
 		bool g_f9_edge = false;
-		bool g_f10_edge = false;
+		bool g_f5_edge = false;
 		bool g_insert_edge = false;
 		bool g_space_edge = false;
 		bool g_left_edge = false;
@@ -1431,16 +1431,19 @@ namespace demo_gui
 			ImGui::SeparatorText("CineBot");
 			if (cinebot::available())
 			{
-				ImGui::TextWrapped("Private/custom match: aim at a spot and spawn a bot there. F6 spawn, F7 move selected, F8 toggle freeze.");
-				if (ImGui::Button("Spawn at crosshair (F6)")) cinebot::spawn_at_crosshair();
+				ImGui::TextWrapped("Private/custom match: hold ADS and press your bound Use key to spawn at the crosshair. F4 faces/releases all bots, F7 moves selected, F8 toggles freeze.");
+				if (ImGui::Button("Spawn at crosshair (ADS + Use)")) cinebot::spawn_at_crosshair();
 				ImGui::SameLine();
 				if (ImGui::Button("Move selected (F7)")) cinebot::move_selected_to_crosshair();
 				ImGui::SameLine();
 				if (ImGui::Button("Freeze / unfreeze (F8)")) cinebot::toggle_selected_freeze();
+				if (ImGui::Button("Face player + release all (F4)", ImVec2(-1, 28)))
+					cinebot::rush_all_toward_player();
+				ImGui::TextDisabled("F4 releases bots to native AI; the log measures their movement after 1.5 seconds.");
 				for (const auto& bot : cinebot::list())
 				{
 					const std::string label = std::format("Slot {} | {} | {}##cinebot{}", bot.slot,
-						bot.alive ? "alive" : "joining/respawning", bot.frozen ? "frozen" : "moving", bot.slot);
+						bot.alive ? "alive" : "joining/respawning", bot.frozen ? "frozen" : "released", bot.slot);
 					if (ImGui::Selectable(label.c_str(), cinebot::selected_slot() == bot.slot)) cinebot::select(bot.slot);
 				}
 			}
@@ -2311,7 +2314,7 @@ namespace demo_gui
 				ImGui::TextWrapped("Output: %s", ((*demos / "captures").string()).c_str());
 			ImGui::Text("ReShade effects: %s", reshade_capture::active() ?
 				"finish-effects hook registered" : "not connected (recording uses the game frame)");
-			ImGui::TextDisabled("ReShade capture requires an add-on enabled ReShade build with API 20.");
+			ImGui::TextWrapped("To include ReShade effects, install the official full add-on support build from https://reshade.me/ (6.8.0, API 20), then restart WWII.");
 			ImGui::SeparatorText("Avidemo / ProRes");
 			ImGui::SliderInt("Output FPS", &fps, 1, 240);
 			if (ImGui::IsItemDeactivatedAfterEdit())
@@ -2327,21 +2330,23 @@ namespace demo_gui
 			ImGui::InputText("File name (optional)", capture_name, IM_ARRAYSIZE(capture_name));
 			if (!demo_capture::recording())
 			{
+				if (profile >= 4)
+					ImGui::TextDisabled("4444 records an opaque alpha channel from the game frame.");
 				if (ImGui::Button("Start recording", ImVec2(170, 30)))
 				{
 					std::string safe_name(capture_name);
 					for (char& ch : safe_name)
 						if (!((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') ||
 							(ch >= '0' && ch <= '9') || ch == '-' || ch == '_')) ch = '_';
-					GameUtil::Cbuf_AddText(LOCAL_CLIENT_0, safe_name.empty() ?
-						"demo_capture_start" : std::format("demo_capture_start {}", safe_name));
-					g_open = false; // A post-effect capture would include this window.
+					if (GameUtil::Cbuf_AddText(LOCAL_CLIENT_0, safe_name.empty() ?
+						"demo_capture_start" : std::format("demo_capture_start {}", safe_name)))
+						g_open = false; // A post-effect capture would include this window.
 				}
 			}
 			else if (ImGui::Button("Stop recording", ImVec2(170, 30)))
 				GameUtil::Cbuf_AddText(LOCAL_CLIENT_0, "demo_capture_stop");
 			ImGui::TextUnformatted(demo_capture::recording() ? "Recording" : "Idle");
-			ImGui::TextDisabled("F10 starts/stops recording without opening this window.");
+			ImGui::TextDisabled("F5 starts/stops recording without opening this window.");
 			if (demo_capture::recording())
 				ImGui::Text("Frames: %llu  Dropped: %llu",
 					static_cast<unsigned long long>(demo_capture::frame_count()),
@@ -2618,7 +2623,7 @@ namespace demo_gui
 			// Always sample so a key held down across a focus change cannot be seen as a
 			// fresh press when focus returns.
 			const bool f9 = edge(VK_F9, g_f9_edge);
-			const bool f10 = edge(VK_F10, g_f10_edge);
+			const bool f5 = edge(VK_F5, g_f5_edge);
 			const bool ins = edge(VK_INSERT, g_insert_edge);
 			// TIMELINE IS ON F1, NOT F2.
 			// F2 is the engine's own theater camera cycle (CL_Demo_HandleAction
@@ -2639,7 +2644,7 @@ namespace demo_gui
 
 			if (ui_hotkeys_allowed())
 			{
-				if (f10 && !InternalConsole::DEVONLY_consoleOpen())
+				if (f5 && !InternalConsole::DEVONLY_consoleOpen())
 					GameUtil::Cbuf_AddText(LOCAL_CLIENT_0,
 						demo_capture::recording() ? "demo_capture_stop" : "demo_capture_start");
 				if (f9 || ins)

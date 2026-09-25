@@ -529,15 +529,9 @@ namespace demo_capture
 				g_stop_reason = "unsupported back buffer format";
 				return;
 			}
-			if (desc.Format == DXGI_FORMAT_R10G10B10A2_UNORM && g_profile >= 4)
-			{
-				Console::printf("[capture] this 10-bit back buffer has only 2-bit alpha; "
-					"ProRes 4444 alpha capture is unsupported. Select profile 0..3.");
-				back->Release();
-				g_recording.store(false, std::memory_order_relaxed);
-				g_stop_reason = "10-bit 4444 alpha capture unsupported";
-				return;
-			}
+			// x2bgr10le treats the top two bits as padding. FFmpeg converts it
+			// to yuva444p10le with opaque alpha for ProRes 4444/4444 XQ.
+			// Do not interpret the game's two padding bits as transparency.
 
 			back->GetDevice(&g_device);
 			if (!g_device)
@@ -673,7 +667,8 @@ namespace demo_capture
 
 	void on_present(IDXGISwapChain* swap)
 	{
-		if (!recording() || post_effect_capture() || !swap) return;
+		if (!swap) return;
+		if (!recording() || post_effect_capture()) return;
 		ID3D11Texture2D* back = nullptr;
 		if (SUCCEEDED(swap->GetBuffer(0, IID_PPV_ARGS(&back))) && back)
 			capture_texture(back);

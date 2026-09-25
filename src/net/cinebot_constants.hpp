@@ -28,6 +28,7 @@ namespace s2cinebot
 		inline constexpr std::uintptr_t SV_SpawnTestClient = 0xF6AA0;
 		inline constexpr std::uintptr_t SV_SetAssignedTeam = 0x6E1410;
 		inline constexpr std::uintptr_t G_SetPlayerOrigin = 0x548820;
+		inline constexpr std::uintptr_t G_SetPlayerAngles = 0x548930;
 		inline constexpr std::uintptr_t SV_LinkEntity = 0x6F97E0;
 		inline constexpr std::uintptr_t SV_IsTestClient = 0x6C4160;
 		inline constexpr std::uintptr_t SV_RefreshTestClient = 0x6C1E00;
@@ -43,6 +44,8 @@ namespace s2cinebot
 		inline constexpr std::uintptr_t sv_maxclients = 0xC5FBA50;
 		inline constexpr std::uintptr_t svs_clients = 0xC5FBA58;
 		inline constexpr std::uintptr_t g_entities = 0x9ED4430;
+		// Key_SetBinding uses this 16-byte-per-key binding table for local client 0.
+		inline constexpr std::uintptr_t key_bindings = 0x8B90FA0;
 	}
 
 	inline constexpr std::size_t kClientStride = 0x11E870;
@@ -52,6 +55,7 @@ namespace s2cinebot
 	inline constexpr std::size_t kEntityStride = 0x418;
 	inline constexpr std::size_t kEntityClientOffset = 0x258;
 	inline constexpr std::size_t kEntityHealthOffset = 0x2DC;
+	inline constexpr std::size_t kEntityOriginOffset = 0x234;
 	inline constexpr std::size_t kGameClientTeamOffset = 0x5AB8;
 	inline constexpr std::size_t kGameClientFlagsOffset = 0x5DFC;
 }

@@ -11,6 +11,7 @@
 #include "ImageLoader.hpp"
 #include "demo/dolly.hpp"
 #include "demo/demo_recording.hpp"
+#include "net/cinebot.hpp"
 #include "hud/dynamic_crosshair.hpp"
 #include "hud/wii_aim.hpp"
 #include "hud/nametags.hpp"
@@ -968,6 +969,7 @@ void handleKeys(int client, int key, int down) {
 
 void hook_CL_KeyEvent(int client, int key, int down) {
 	if (!consoleOpen) {
+		cinebot::on_game_key(key, down);
 		Binds::execBindForKey(key, down);
 	}
 	handleKeys(client, key, down);

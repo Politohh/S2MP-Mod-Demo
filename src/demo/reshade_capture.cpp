@@ -20,18 +20,20 @@ namespace reshade_capture
 		std::atomic_bool g_active{};
 		std::atomic_bool g_received_frame{};
 		bool g_attempted = false;
+		bool g_missing_logged = false;
 		ULONGLONG g_last_probe = 0;
+		ULONGLONG g_first_probe = 0;
 
 		void on_finish(reshade::api::effect_runtime* runtime,
 			reshade::api::command_list*, reshade::api::resource_view rtv,
 			reshade::api::resource_view)
 		{
 			if (!demo_capture::recording() || !runtime || !rtv.handle) return;
-			demo_capture::set_post_effect_capture(true);
 			auto* device = runtime->get_device();
 			if (!device || device->get_api() != reshade::api::device_api::d3d11) return;
 			const auto resource = device->get_resource_from_view(rtv);
 			if (!resource.handle) return;
+			demo_capture::set_post_effect_capture(true);
 			auto* texture = reinterpret_cast<ID3D11Texture2D*>(resource.handle);
 			demo_capture::on_post_effect_texture(texture);
 			if (!g_received_frame.exchange(true))
@@ -55,10 +57,19 @@ namespace reshade_capture
 	{
 		if (g_active.load() || g_attempted) return;
 		const auto now = GetTickCount64();
+		if (!g_first_probe) g_first_probe = now;
 		if (now - g_last_probe < 2000) return;
 		g_last_probe = now;
 		const auto reshade_module = find_reshade();
-		if (!reshade_module) return;
+		if (!reshade_module)
+		{
+			if (!g_missing_logged && now - g_first_probe >= 5000)
+			{
+				g_missing_logged = true;
+				Console::printf("[capture] ReShade add-on API not detected. To include effects, install the official full add-on support build from https://reshade.me/ and restart the game. Normal game-frame recording remains available.");
+			}
+			return;
+		}
 		g_attempted = true;
 
 		HMODULE own_module = nullptr;

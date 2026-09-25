@@ -3,6 +3,7 @@
 #include "net/cinebot_constants.hpp"
 
 #include "Console.hpp"
+#include "FuncPointers.h"
 #include "GameUtil.hpp"
 
 #include <array>
@@ -46,6 +47,11 @@ namespace
 		int last_connection_state{-1};
 		int last_team{-1};
 		bool ever_connected{};
+		bool rushing{};
+		bool rush_reported{};
+		ULONGLONG rush_started{};
+		vec3 rush_origin{};
+		vec3 rush_target{};
 	};
 
 	std::uintptr_t game_base{};
@@ -59,6 +65,11 @@ namespace
 	std::atomic_bool spawn_pending{};
 	std::atomic_bool move_pending{};
 	std::atomic_bool toggle_pending{};
+	std::atomic_bool rush_pending{};
+	int activate_binding{};
+	int ads_binding{};
+	bool ads_held{};
+	bool use_held{};
 	inline constexpr std::size_t kMaxTrackedBots = 64;
 	std::array<bot_state, kMaxTrackedBots> bots{};
 	std::atomic_int selected_bot_slot{-1};
@@ -105,6 +116,7 @@ namespace
 			executable_address(at<void*>(rva::SV_SpawnTestClient)) &&
 			executable_address(at<void*>(rva::SV_SetAssignedTeam)) &&
 			executable_address(at<void*>(rva::G_SetPlayerOrigin)) &&
+			executable_address(at<void*>(rva::G_SetPlayerAngles)) &&
 			executable_address(at<void*>(rva::SV_LinkEntity)) &&
 			executable_address(at<void*>(rva::SV_IsTestClient)) &&
 			executable_address(at<void*>(rva::SV_RefreshTestClient)) &&
@@ -209,6 +221,33 @@ namespace
 		{
 			at<void(*)(void*)>(rva::SV_RefreshTestClient)(entity);
 		}
+	}
+
+	vec3 entity_origin(const void* entity)
+	{
+		const auto* values = reinterpret_cast<const float*>(
+			static_cast<const std::byte*>(entity) + kEntityOriginOffset);
+		return {values[0], values[1], values[2]};
+	}
+
+	float distance(const vec3& a, const vec3& b)
+	{
+		return std::hypot(std::hypot(a.x - b.x, a.y - b.y), a.z - b.z);
+	}
+
+	bool face_player(void* entity, const vec3& from, const vec3& target)
+	{
+		const float dx = target.x - from.x;
+		const float dy = target.y - from.y;
+		const float planar = std::hypot(dx, dy);
+		if (planar < 16.0f) return false;
+		constexpr float radians_to_degrees = 57.29577951308232f;
+		const float angles[3] = {
+			-std::atan2(target.z - from.z, planar) * radians_to_degrees,
+			std::atan2(dy, dx) * radians_to_degrees, 0.0f
+		};
+		at<void(*)(void*, const float*)>(rva::G_SetPlayerAngles)(entity, angles);
+		return true;
 	}
 
 	unsigned int lui_notify_event()
@@ -354,8 +393,25 @@ namespace
 		}
 		else if (!alive && bot.was_alive)
 		{
+			if (bot.rushing)
+			{
+				bot.rushing = false;
+				bot.frozen = true; // Respawn returns to the saved stationary setup.
+			}
 			log("Bot slot " + std::to_string(bot.slot) +
 				" death detected; placement is paused for the death animation.");
+		}
+		if (alive && bot.rushing && !bot.rush_reported &&
+			GetTickCount64() - bot.rush_started >= 1500)
+		{
+			const auto current = entity_origin(bot.entity);
+			const auto moved = distance(current, bot.rush_origin);
+			const auto toward = distance(bot.rush_origin, bot.rush_target) -
+				distance(current, bot.rush_target);
+			log("F4 rush observation: bot " + std::to_string(bot.slot) +
+				" moved " + std::to_string(moved) + " units, " +
+				std::to_string(toward) + " toward the player in 1.5s.");
+			bot.rush_reported = true;
 		}
 
 		if (game_client)
@@ -386,14 +442,14 @@ namespace
 		spawn_pending = false;
 		if (!in_custom_game())
 		{
-			log("F6 ignored: join and spawn into a private/custom match first.");
+			log("Spawn ignored: join and spawn into a private/custom match first.");
 			MessageBeep(MB_ICONWARNING);
 			return;
 		}
 		vec3 anchor{};
 		if (!capture_crosshair(anchor))
 		{
-			log("F6 failed: could not read the local camera.");
+			log("Spawn failed: could not read the local camera.");
 			MessageBeep(MB_ICONERROR);
 			return;
 		}
@@ -454,6 +510,7 @@ namespace
 		if (!capture_crosshair(anchor)) return;
 		bot->anchor = anchor;
 		bot->frozen = true;
+		bot->rushing = false;
 		if (bot->was_alive) set_player_origin(bot->entity, bot->anchor);
 		publish_bots();
 		log("Moved bot slot " + std::to_string(bot->slot) +
@@ -471,6 +528,7 @@ namespace
 			return;
 		}
 		bot->frozen = !bot->frozen;
+		bot->rushing = false;
 		auto* entity = static_cast<std::byte*>(bot->entity);
 		if (auto* game_client = *reinterpret_cast<std::byte**>(entity + kEntityClientOffset))
 		{
@@ -482,6 +540,35 @@ namespace
 			(bot->frozen ? " freezing enabled." : " freezing disabled."));
 		publish_bots();
 		MessageBeep(bot->frozen ? MB_OK : MB_ICONWARNING);
+	}
+
+	void __cdecl rush_on_main_thread()
+	{
+		rush_pending = false;
+		if (!in_custom_game()) return;
+		const auto* local = at<const std::byte*>(rva::g_entities);
+		if (!*reinterpret_cast<void* const*>(local + kEntityClientOffset)) return;
+		const auto target = entity_origin(local);
+		int released = 0;
+		for (auto& bot : bots)
+		{
+			if (!valid_bot_entity(bot) || !bot.was_alive) continue;
+			const auto origin = entity_origin(bot.entity);
+			if (!face_player(bot.entity, origin, target)) continue;
+			bot.rush_origin = origin;
+			bot.rush_target = target;
+			bot.rush_started = GetTickCount64();
+			bot.rush_reported = false;
+			bot.rushing = true;
+			bot.frozen = false;
+			if (auto* game_client = *reinterpret_cast<std::byte**>(
+				static_cast<std::byte*>(bot.entity) + kEntityClientOffset))
+				*reinterpret_cast<int*>(game_client + kGameClientFlagsOffset) &= ~4;
+			++released;
+		}
+		publish_bots();
+		log("F4 faced and released " + std::to_string(released) +
+			" bot(s) toward the local player. Native AI movement is under test.");
 	}
 
 	bool queue_main_thread(void(__cdecl* callback)())
@@ -546,10 +633,17 @@ namespace cinebot
 			(module_directory / "S2CineBot.ini").c_str()));
 		if (placement_distance < 25.0f || placement_distance > 5000.0f) placement_distance = 250.0f;
 		g_available = true;
-		log("Integrated CineBot ready. F6=spawn, F7=move, F8=toggle freeze.");
+		activate_binding = Functions::_Key_GetBindingForCommand ?
+			Functions::_Key_GetBindingForCommand("+activate") : 0;
+		ads_binding = Functions::_Key_GetBindingForCommand ?
+			Functions::_Key_GetBindingForCommand("+toggleads_throw") : 0;
+		log("Integrated CineBot ready. ADS + bound Use=spawn, F4=face/release all, F7=move, F8=toggle freeze. Use binding index " +
+			std::to_string(activate_binding) + ", ADS binding index " +
+			std::to_string(ads_binding) + '.');
 		GameUtil::addCommand("cinebot_spawn", [] { spawn_at_crosshair(); });
 		GameUtil::addCommand("cinebot_move", [] { move_selected_to_crosshair(); });
 		GameUtil::addCommand("cinebot_freeze", [] { toggle_selected_freeze(); });
+		GameUtil::addCommand("cinebot_rush", [] { rush_all_toward_player(); });
 	}
 
 	void tick()
@@ -557,7 +651,7 @@ namespace cinebot
 		if (!g_available.load()) return;
 		if (game_is_foreground())
 		{
-			if (key_pressed(VK_F6)) spawn_at_crosshair();
+			if (key_pressed(VK_F4)) rush_all_toward_player();
 			if (key_pressed(VK_F7)) move_selected_to_crosshair();
 			if (key_pressed(VK_F8)) toggle_selected_freeze();
 		}
@@ -596,5 +690,24 @@ namespace cinebot
 	void toggle_selected_freeze()
 	{
 		if (g_available.load()) queue_once(toggle_pending, toggle_on_main_thread, "freeze toggle");
+	}
+
+	void rush_all_toward_player()
+	{
+		if (g_available.load()) queue_once(rush_pending, rush_on_main_thread, "rush all");
+	}
+
+	void on_game_key(const int key, const int down)
+	{
+		if (!g_available.load() || key < 0 || key >= 256) return;
+		const int binding = *at<const int*>(rva::key_bindings + 16ull * key);
+		if (ads_binding > 0 && binding == ads_binding) ads_held = down != 0;
+		if (activate_binding <= 0) return;
+		if (binding != activate_binding) return;
+		if (!down) { use_held = false; return; }
+		if (use_held) return;
+		use_held = true;
+		if ((ads_held || (GetAsyncKeyState(VK_RBUTTON) & 0x8000)) && game_is_foreground())
+			spawn_at_crosshair();
 	}
 }
