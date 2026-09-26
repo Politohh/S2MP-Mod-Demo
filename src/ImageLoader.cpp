@@ -1717,15 +1717,8 @@ void ImageLoader::reloadImages() {
 typedef int (*Image_ClearStreamLevelResidency_t)(GfxImage* image, uint8_t streamLevel);
 static Image_ClearStreamLevelResidency_t fpImage_ClearStreamLevelResidency;
 
-static bool ShouldDumpImages() {
-    // The cinematic client does not register this developer-only dvar.
-    const auto* dump = Functions::_Dvar_FindVar
-        ? Functions::_Dvar_FindVar("g_dumpImages") : nullptr;
-    return dump && dump->current.enabled;
-}
-
 int Image_ClearStreamLevelResidency_hookfunc(GfxImage* image, uint8_t streamLevel) {
-    if (ShouldDumpImages()) {
+    if (Functions::_Dvar_FindVar("g_dumpImages")->current.enabled) {
         ImageLoader::dumpImage(image);
     }
     if (ImageLoader::loadFromDisk(image)) {
@@ -1739,7 +1732,7 @@ static Load_Texture_t fpLoad_Texture;
 
 void Load_Texture_hookfunc(void** pixels, GfxImage* image) {
     fpLoad_Texture(pixels, image);
-    if (ShouldDumpImages()) {
+    if (Functions::_Dvar_FindVar("g_dumpImages")->current.enabled) {
         ImageLoader::dumpImage(image);
     }
     if (ImageLoader::loadFromDisk(image)) {

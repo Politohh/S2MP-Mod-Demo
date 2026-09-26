@@ -133,9 +133,6 @@ void ExtConsole::extConInit(int extConsoleMode) {
 	// Package build number FIRST -- if a log is ever read without it, there is no
 	// way to know which DLL wrote the lines underneath. See src/ModBuild.hpp.
 	Console::printf("[s2mp] package build %d", mod_build::NUMBER);
-#ifdef S2MP_CINEMATIC_CLIENT
-	Console::printf("[s2mp] cinematic client: host/player-kick and gameplay commands disabled; unlockall retained");
-#endif
 	Console::printf("[build] detected: %s   (%zu addresses in the Store table)",
 		build_map::name(), build_map::mapped_count());
 	if (build_map::current() == build_map::Build::Unknown)

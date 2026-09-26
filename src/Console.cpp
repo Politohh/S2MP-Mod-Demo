@@ -205,18 +205,15 @@ void cgt() {
 }
 
 void Console::registerCustomCommands() {
-#ifndef S2MP_CINEMATIC_CLIENT
 	setupSpecialLobbyVars();
 	dev_mode::register_command();
-#endif
 
 	// ---- the product -------------------------------------------------
 	// Short on purpose. Everything a normal session needs, and nothing that
 	// only makes sense mid-investigation.
+	GameUtil::addCommand("map", &CustomCommands::changeMap);
 	GameUtil::addCommand("clear", &InternalConsole::clearFullConsole);
 	GameUtil::addCommand("unlockall", &CustomCommands::unlockAll);
-#ifndef S2MP_CINEMATIC_CLIENT
-	GameUtil::addCommand("map", &CustomCommands::changeMap);
 
 	// ---- developer mode ----------------------------------------------
 	// Cheats, engine debug overlays, asset dumpers and renderer switches.
@@ -256,8 +253,6 @@ void Console::registerCustomCommands() {
 	dev_mode::add_command("getCmdFuncAddr", &CustomCommands::getCmdFuncAddr);
 #endif // DEVELOPMENT_BUILD
 
-#endif
-
 	if (ConfigManager::readConfigValue("s2mp-mod.cfg", "unlockall", false)) {
 		CustomCommands::unlockAll();//might as well just call it directly
 		Console::infoPrint("Unlock All set");
@@ -265,37 +260,28 @@ void Console::registerCustomCommands() {
 }
 
 void Console::registerCustomDvars() {
-#ifndef S2MP_CINEMATIC_CLIENT
 	DvarInterface::registerBool("g_dumpLui", 0, 0, "Dump LUI files on map load");
 	DvarInterface::registerBool("g_dumpStringTables", 0, 0, "Dump StringTables when they are loaded");
 	DvarInterface::registerBool("g_dumpRawfiles", 0, 0, "Dump RawFiles when they are loaded");
 	DvarInterface::registerBool("printWorldInfo", 0, 0, "Prints GfxWorld build info on load");
 	DvarInterface::registerBool("g_dumpMapEnts", 0, 0, "Dump MapEnts when they are loaded");
 	DvarInterface::registerBool("g_dumpImages", 0, 0, "Dump Images when they are loaded. Can be unstable when loading maps. Best to turn off when doing so.");
-#endif
 
-	// The retained unlockall command queues these names, and game scripts can
-	// query them while multiplayer UI starts. Keep them in the client build.
+	//zmcacutils.lua left in a check for a dvar named "unlockAllConsumables" so registering here makes the lua function work lol
 	DvarInterface::registerBool("unlockAllConsumables", 0, 0, "Unlock all zombies consumables. Used by the unlockall command"); 
 	DvarInterface::registerBool("unlockAllPassivePerks", 0, 0, "Unlock all zombies passive perks. Used by the unlockall command"); 
 
-	// Preserve the engine/GSC compatibility values across build configurations.
+	//for gsc and any other system that still checks for this dvar
 	Functions::_Dvar_RegisterInt("850", 0, 0, 4, 0); //force_ranking
 	Functions::_Dvar_RegisterInt("5357", 0, 0, 1, 0); //isGamescomForceRankedMatch
 
-#ifndef S2MP_CINEMATIC_CLIENT
 	DvarInterface::registerFloat("cg_gun_x", 0.0, -3.4028235e38, 3.4028235e38, 0, "Forward position of the viewmodel");
 	DvarInterface::registerFloat("cg_gun_y", 0.0, -3.4028235e38, 3.4028235e38, 0, "Right position of the viewmodel");
 	DvarInterface::registerFloat("cg_gun_z", 0.0, -3.4028235e38, 3.4028235e38, 0, "Up position of the viewmodel");
-#endif
 }
 
 //useful for testing commands and handling non-cmd/non-dvar stuff
 bool execCustomDevCmd(const std::string& cmd) {
-#ifdef S2MP_CINEMATIC_CLIENT
-	(void)cmd;
-	return false;
-#else
 	std::vector<std::string> p = Console::parseCmdToVec(cmd);
 	if (p.empty()) {
 		return false;
@@ -355,7 +341,6 @@ bool execCustomDevCmd(const std::string& cmd) {
 	}
 
 	return false;
-#endif
 }
 
 //Formats a commands and sends it to the dvar interface. Returns true if successful

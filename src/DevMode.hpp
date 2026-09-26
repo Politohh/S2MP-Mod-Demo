@@ -12,8 +12,8 @@
 //                 that exist because this is a reverse-engineering
 //                 project.
 //
-// Debug builds retain the workbench. The shareable Release build compiles
-// its registration API as no-ops and never loads the persisted dev flag.
+// Everything is KEPT. Only the workbench is hidden, so the default
+// surface is the product.
 //
 // Modules do not test the flag directly at init time -- they hand us a
 // callback with on_enable(). That way turning developer mode on at

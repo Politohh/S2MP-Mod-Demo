@@ -1111,7 +1111,6 @@ namespace demo_gui
 			}
 		}
 
-#ifndef S2MP_CINEMATIC_CLIENT
 		// ---- SERVERS ----------------------------------------------------------
 		// READ-ONLY view of the lobbies matchmaking returned for the current
 		// search. Reached by a pure pointer walk (lobby -> mm -> results), with
@@ -1422,7 +1421,6 @@ namespace demo_gui
 				"Console equivalents: fh_who (list), fh_kick <slot>.");
 		}
 
-#endif
 		// ---- BOTS -------------------------------------------------------------
 		// Deliberately ONE button plus a count. Everything that makes a bot lobby
 		// look real (names, a spread of the game's own uniforms) is a single
@@ -1451,9 +1449,6 @@ namespace demo_gui
 			}
 			else ImGui::TextWrapped("CineBot is unavailable for this game executable. Check s2mp_console.log for the exact-build check.");
 			ImGui::Spacing();
-#ifdef S2MP_CINEMATIC_CLIENT
-			return; // CineBot only; no lobby disguise or bulk bot controls.
-#else
 			if (!ImGui::CollapsingHeader("Legacy bot lobby controls")) return;
 			static int  s_count = 11;      // 11 bots + you = a full-ish 12 lobby
 			static int  s_uniform_pct = 50;
@@ -1574,10 +1569,8 @@ namespace demo_gui
 					"Names come from S2MP-Mod\\botnames.txt, uniforms from botkits.txt\n"
 					"(generate with tools/s2_botkits.py). Both reload while the game runs.");
 			}
-#endif
 		}
 
-#ifndef S2MP_CINEMATIC_CLIENT
 		// ---- HOST -------------------------------------------------------------
 		// Set it, play, host. No hotkey and no window to hit: the map and gametype
 		// are HELD at your values, and matchmaking's search never reads either of
@@ -1843,7 +1836,6 @@ namespace demo_gui
 		}
 
 		// =================================================================
-#endif
 		//  DOLLY — EDITING ONLY. Nothing is drawn from here.
 		// =================================================================
 		//
@@ -2377,11 +2369,11 @@ namespace demo_gui
 				if (g_font_bold) { ImGui::PopFont(); }
 				ImGui::Separator();
 
-				// The Release client shows only cinematic tools. Developer builds
-				// can also show the investigation tabs.
-#ifndef S2MP_CINEMATIC_CLIENT
+				// The DEFAULT surface is the product: record a demo, play it
+				// back, put a camera on it. Everything else in this mod exists
+				// because this is a reverse-engineering project, and it only
+				// appears in developer mode.
 				const bool dev = dev_mode::enabled();
-#endif
 
 				if (ImGui::BeginTabBar("##s2mp_tabs"))
 				{
@@ -2405,7 +2397,6 @@ namespace demo_gui
 						draw_bonecam_tab();
 						ImGui::EndTabItem();
 					}
-#ifndef S2MP_CINEMATIC_CLIENT
 					if (dev && ImGui::BeginTabItem("Servers"))
 					{
 						draw_servers_tab();
@@ -2416,26 +2407,22 @@ namespace demo_gui
 						draw_host_tab();
 						ImGui::EndTabItem();
 					}
-#endif
 					if (ImGui::BeginTabItem("Bots"))
 					{
 						draw_bots_tab();
 						ImGui::EndTabItem();
 					}
-#ifndef S2MP_CINEMATIC_CLIENT
 					if (dev && ImGui::BeginTabItem("Players"))
 					{
 						draw_players_tab();
 						ImGui::EndTabItem();
 					}
-#endif
 					ImGui::EndTabBar();
 				}
 
 				// One line, at the bottom, so the extra machinery is
 				// discoverable without being in the way.
 				ImGui::Separator();
-#ifndef S2MP_CINEMATIC_CLIENT
 				{
 					bool on = dev;
 					if (ImGui::Checkbox("Developer mode", &on))
@@ -2454,9 +2441,6 @@ namespace demo_gui
 					ImGui::SameLine();
 					ImGui::TextDisabled("F9 / Insert: this window    F2: timeline");
 				}
-#else
-				ImGui::TextDisabled("F9 / Insert: tools    F2: timeline");
-#endif
 				ImGui::End();
 			}
 
@@ -2826,14 +2810,12 @@ namespace demo_gui
 			demo_player::poll_pending();
 			// Advances the playlist sweep if one is running. No-op otherwise, and
 			// it aborts itself (restoring the playlist) if you enter a match.
-#ifndef S2MP_CINEMATIC_CLIENT
 			server_browser::tick();
 			// Re-asserts DLC-off against the engine's ongoing re-registration.
 			dlc::tick();
 			// Holds the lobby at the map/gametype/playlist you chose. Compare-then-
 			// write, so in steady state it issues nothing at all.
 			force_host::tick();
-#endif
 			// Re-asserts the frame-rate cap while it is unlocked past 250.
 			// No-op below that -- see demo_display.hpp for why.
 			demo_display::tick();

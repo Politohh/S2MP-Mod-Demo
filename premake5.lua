@@ -171,7 +171,6 @@ workspace "s2mp-mod"
             symbols "On"
 
         filter "configurations:Release"
-            defines { "S2MP_CINEMATIC_CLIENT" }
             runtime "Release"
             optimize "On"
 

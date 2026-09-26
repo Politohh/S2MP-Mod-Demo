@@ -39,9 +39,7 @@
 //  28  hook the test-client command consumer; keep F4 frozen until intercepted
 //  29  experimental fractional dolly clock (source tag only; not shared)
 //  30  export-stutter timing diagnostics and optional fractional dolly clock
-//  31  drop unstable slow clock; Release is a cinematic-only client
-//  32  restore UI/unlockall compatibility dvars omitted by client build
-//  33  guard optional image-dump dvar in both texture loading hooks
+//  33  Build 30 rollback with dolly_slow_clock off by default
 namespace mod_build
 {
 	constexpr int NUMBER = 33;
