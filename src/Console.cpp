@@ -205,15 +205,18 @@ void cgt() {
 }
 
 void Console::registerCustomCommands() {
+#ifndef S2MP_CINEMATIC_CLIENT
 	setupSpecialLobbyVars();
 	dev_mode::register_command();
+#endif
 
 	// ---- the product -------------------------------------------------
 	// Short on purpose. Everything a normal session needs, and nothing that
 	// only makes sense mid-investigation.
-	GameUtil::addCommand("map", &CustomCommands::changeMap);
 	GameUtil::addCommand("clear", &InternalConsole::clearFullConsole);
 	GameUtil::addCommand("unlockall", &CustomCommands::unlockAll);
+#ifndef S2MP_CINEMATIC_CLIENT
+	GameUtil::addCommand("map", &CustomCommands::changeMap);
 
 	// ---- developer mode ----------------------------------------------
 	// Cheats, engine debug overlays, asset dumpers and renderer switches.
@@ -253,6 +256,8 @@ void Console::registerCustomCommands() {
 	dev_mode::add_command("getCmdFuncAddr", &CustomCommands::getCmdFuncAddr);
 #endif // DEVELOPMENT_BUILD
 
+#endif
+
 	if (ConfigManager::readConfigValue("s2mp-mod.cfg", "unlockall", false)) {
 		CustomCommands::unlockAll();//might as well just call it directly
 		Console::infoPrint("Unlock All set");
@@ -260,6 +265,7 @@ void Console::registerCustomCommands() {
 }
 
 void Console::registerCustomDvars() {
+#ifndef S2MP_CINEMATIC_CLIENT
 	DvarInterface::registerBool("g_dumpLui", 0, 0, "Dump LUI files on map load");
 	DvarInterface::registerBool("g_dumpStringTables", 0, 0, "Dump StringTables when they are loaded");
 	DvarInterface::registerBool("g_dumpRawfiles", 0, 0, "Dump RawFiles when they are loaded");
@@ -278,10 +284,15 @@ void Console::registerCustomDvars() {
 	DvarInterface::registerFloat("cg_gun_x", 0.0, -3.4028235e38, 3.4028235e38, 0, "Forward position of the viewmodel");
 	DvarInterface::registerFloat("cg_gun_y", 0.0, -3.4028235e38, 3.4028235e38, 0, "Right position of the viewmodel");
 	DvarInterface::registerFloat("cg_gun_z", 0.0, -3.4028235e38, 3.4028235e38, 0, "Up position of the viewmodel");
+#endif
 }
 
 //useful for testing commands and handling non-cmd/non-dvar stuff
 bool execCustomDevCmd(const std::string& cmd) {
+#ifdef S2MP_CINEMATIC_CLIENT
+	(void)cmd;
+	return false;
+#else
 	std::vector<std::string> p = Console::parseCmdToVec(cmd);
 	if (p.empty()) {
 		return false;
@@ -341,6 +352,7 @@ bool execCustomDevCmd(const std::string& cmd) {
 	}
 
 	return false;
+#endif
 }
 
 //Formats a commands and sends it to the dvar interface. Returns true if successful

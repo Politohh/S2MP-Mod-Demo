@@ -1123,13 +1123,16 @@ void DebugPatches::earlyInit() {
 
 void DebugPatches::init() {
     DEV_INIT_PRINT();
-    // Hide CheatEngine (and debuggers) from the game's process-list scans. Re-enabled here
+    // Developer builds can hide debug tools from the game's process-list scans. Enabled here
     // in the LATE init -- once the game window exists and Arxan's early unpacking is done --
     // rather than in earlyInit, where the OLD entry-removal version crashed on some machines.
     // The rewritten hook only blanks names in place (no buffer surgery), so it's launch-safe.
     // Runs first so fpNtQuerySystemInformation is set for freeIdaMutants below.
+    // The shareable cinematic client does not install this process-name hook.
+#ifndef S2MP_CINEMATIC_CLIENT
     patchProcessNameChecks();
-    freeIdaMutants(); //works, but how can we prevent it from ever happening
+    freeIdaMutants(); // developer tooling only; do not hide process names in the client
+#endif
     hookNtClose();
     repairNtUserStubs();//lovely
 }

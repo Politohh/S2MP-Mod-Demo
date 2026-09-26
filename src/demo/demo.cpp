@@ -60,12 +60,18 @@ namespace demo
 		dolly::init();
 		// Rides dolly's CL_Demo_FreeCameraMove hook, so it must come after it.
 		bonecam::init();
+#ifndef S2MP_CINEMATIC_CLIENT
+		// Gameplay-facing assists and nameplates stay out of the client build.
 		nametags::init();
 		aimassist::init();
 		// MWII-style crosshair sway. One hook on CG_CalcCrosshairPosition, whose
 		// five callers are ALL draw paths — so it moves the reticle only, never
 		// aim or targeting. Off by default; works in live play and in demos.
 		dynamic_crosshair::init();
+#endif
+		// Minimal HUD is a presentation control used while filming demos.
+		broadcaster::init();
+#ifndef S2MP_CINEMATIC_CLIENT
 		// Wii-style pointer aiming. Commands only -- it rides the existing
 		// CL_CreateCmd / UpdateLocalPlayerState / CalcCrosshairPosition /
 		// R_EndFrame stubs and installs no hook of its own. Off by default.
@@ -75,19 +81,18 @@ namespace demo
 		// cannot affect matchmaking the way the deleted force_host did.
 		server_browser::init();
 		dlc::init();
-		// Minimal HUD, driven by the game's OWN broadcaster settings. Installs
-		// no hooks; its once-per-frame latch is a call-out from demo_native's
-		// existing CG_PublishHudModel stub. Off by default.
-		broadcaster::init();
 		force_host::init();
 		// Bot renaming. Hooks the engine's own SV_AddBot, which a real player's
 		// connection cannot reach — so it structurally cannot touch a human.
 		bots::init();
-		cinebot::init();
 		// Puts mp_house (Groesten House) into the GAME's own private-match map
 		// picker -- hooks GameInfo_UpdateArenas and appends to its own table
 		// after the real mp/mapLoad.csv-driven list has been built.
 		hidden_maps::init();
+#endif
+		// CineBot is limited to private/custom cinematic sessions and remains
+		// available in the shareable client without legacy lobby controls.
+		cinebot::init();
 		demo_gui::init();
 		Console::printf("[demo] theater initialized");
 	}

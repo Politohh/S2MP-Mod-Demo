@@ -39,7 +39,8 @@
 //  28  hook the test-client command consumer; keep F4 frozen until intercepted
 //  29  experimental fractional dolly clock (source tag only; not shared)
 //  30  export-stutter timing diagnostics and optional fractional dolly clock
+//  31  drop unstable slow clock; Release is a cinematic-only client
 namespace mod_build
 {
-	constexpr int NUMBER = 30;
+	constexpr int NUMBER = 31;
 }

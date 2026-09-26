@@ -68,6 +68,11 @@ namespace dev_mode
 
 	void init()
 	{
+#ifdef S2MP_CINEMATIC_CLIENT
+		g_enabled = false;
+		g_inited = true;
+		return;
+#else
 		if (g_inited)
 		{
 			return;
@@ -87,15 +92,24 @@ namespace dev_mode
 		{
 			fire_pending();
 		}
+#endif
 	}
 
 	bool enabled()
 	{
+#ifdef S2MP_CINEMATIC_CLIENT
+		return false;
+#else
 		return g_enabled;
+#endif
 	}
 
 	void set(bool on)
 	{
+#ifdef S2MP_CINEMATIC_CLIENT
+		(void)on;
+		return;
+#else
 		if (on == g_enabled)
 		{
 			Console::printf("developer mode already %s", on ? "ON" : "off");
@@ -120,10 +134,15 @@ namespace dev_mode
 			Console::printf("developer mode off — the window now shows the demo "
 				"tools only. Commands already registered this session stay usable.");
 		}
+#endif
 	}
 
 	void on_enable(void (*fn)())
 	{
+#ifdef S2MP_CINEMATIC_CLIENT
+		(void)fn;
+		return;
+#else
 		if (fn == nullptr)
 		{
 			return;
@@ -134,10 +153,16 @@ namespace dev_mode
 			hooks().back().fired = true;
 			fn();
 		}
+#endif
 	}
 
 	void add_command(const char* name, void (*fn)())
 	{
+#ifdef S2MP_CINEMATIC_CLIENT
+		(void)name;
+		(void)fn;
+		return;
+#else
 		// Held by value so the list survives whatever produced it. `name` is
 		// always a string literal at every call site, but copying is free
 		// here and removes the question.
@@ -171,10 +196,13 @@ namespace dev_mode
 				pending.clear();
 			});
 		}
+#endif
 	}
 
 	void register_command()
 	{
+#ifndef S2MP_CINEMATIC_CLIENT
 		GameUtil::addCommand("s2_dev", cmd_dev);
+#endif
 	}
 }

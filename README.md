@@ -2,7 +2,7 @@
 
 An unofficial Call of Duty: WWII (S2) multiplayer demo and camera toolkit. This repository continues the [`demo-w2dr` branch of josh155/S2MP-Mod](https://github.com/josh155/S2MP-Mod/tree/demo-w2dr), which is itself a fork of [Rattpak/S2MP-Mod](https://github.com/Rattpak/S2MP-Mod). The original commit history is retained. See [CREDITS.md](CREDITS.md) for provenance and third-party notices.
 
-This is an experimental, game-build-specific mod. The numbered release package is for testing; it is not a game copy. **Build 30** is the current package. The DLL prints `[s2mp] package build 30` in `main/s2mp_console.log` so test reports can be tied to the exact binary.
+This is an experimental, game-build-specific mod. The numbered release package is for testing; it is not a game copy. **Build 31** is the current package. The DLL prints `[s2mp] package build 31` in `main/s2mp_console.log` so test reports can be tied to the exact binary.
 
 ## Get started
 
@@ -17,11 +17,12 @@ The ZIP includes installation instructions and SHA-256 hashes. The game executab
 
 | Area | Current state |
 | --- | --- |
-| Demos and dolly | Native demo playback, free camera, camera points, path playback, rewinds, FOV, and world-camera roll. Build 30 tests an optional fractional camera clock for 0.05× moves (`dolly_slow_clock 0` disables it); in-game validation is pending. |
-| Recording | Native demo recording and an FFmpeg/ProRes capture tab. Build 30 logs source-frame cadence and capture pressure at stop to diagnose export-only stutter. ReShade effects require a compatible full add-on ReShade installation; see the package's `RESHADE-SETUP.txt`. **F5** starts or stops capture. |
+| Demos and dolly | Native demo playback, free camera, camera points, path playback, rewinds, FOV, and world-camera roll. Build 31 uses the engine clock, matching the Build 30 setting serv found smooth. |
+| Recording | Native demo recording and an FFmpeg/ProRes capture tab. Capture logs source-frame cadence and encoder pressure at stop. ReShade effects require a compatible full add-on ReShade installation; see the package's `RESHADE-SETUP.txt`. **F5** starts or stops capture. |
 | CineBot | In a private/custom match, **ADS + bound Use** spawns at the crosshair, **F7** moves the selected bot, and **F8** toggles freeze. **F4** attempts a straight run toward a snapshot of the player's position. The Build 28 F4 command interception is **awaiting in-game validation**. |
 | HUD | The **No HUD** control toggles the game's `cg_draw2D` setting. |
 | Bone Cam | Still experimental; do not rely on it for a shoot. |
+| Shareable client | **Release | x64** omits host, server-browser, player-kick, developer, gameplay-assist, and legacy bot-lobby controls. CineBot remains for private/custom cinematic sessions; `unlockall` remains available by request. |
 
 Camera shortcuts: **K** adds a dolly point, **L** removes the last point, **J** rewinds and plays the path, and **Left Arrow** seeks back ten seconds. Some shortcuts are ignored while the UI is focused. In free camera, the mouse wheel adjusts roll and **Alt + wheel** adjusts FOV. Camera speed can be reduced in the UI. Demo speed can reach **0.05×**; lower speeds previously caused severe stutter on the test machine.
 
@@ -29,10 +30,10 @@ Camera shortcuts: **K** adds a dolly point, **L** removes the last point, **J** 
 
 The source and dependency trees are in this repository. On Windows, use Visual Studio 2022 or later with the C++ desktop workload and Windows SDK. Generate the solution with `tools/premake5.exe vs2022`, then build `s2mp-mod.sln` as **Release | x64**. The output is under `bin/Release/`. The launcher EXE is a separately supplied upstream binary; this repository builds the mod DLL.
 
-Release builds no longer copy files into a developer-specific game directory. Use your own install path when testing. Engine hooks and CineBot offsets target the exact WWII executable described in `src/net/cinebot_constants.hpp`; other game versions are not validated.
+Release builds no longer copy files into a developer-specific game directory. Use your own install path when testing. Release builds use the cinematic-client configuration; Debug builds retain development tools. Engine hooks and CineBot offsets target the exact WWII executable described in `src/net/cinebot_constants.hpp`; other game versions are not validated. The inherited loader still patches the game for mod operation, so this is not a certification for online play or anti-cheat compatibility.
 
 ## Feedback and provenance
 
-For a problem report, include the numbered ZIP name, the fresh `main/s2mp_console.log`, and, for bot issues, `S2CineBot.log` from the game directory. Describe what the game visibly did; an offline build or test cannot prove in-game behavior. See [Build 30 release notes](docs/RELEASE-BUILD-30.md) for this package's test focus.
+For a problem report, include the numbered ZIP name, the fresh `main/s2mp_console.log`, and, for bot issues, `S2CineBot.log` from the game directory. Describe what the game visibly did; an offline build or test cannot prove in-game behavior. See [Build 31 release notes](docs/RELEASE-BUILD-31.md) for this package's test focus.
 
 This repository does **not** declare a new license for the inherited S2MP code. Neither [josh155/S2MP-Mod](https://github.com/josh155/S2MP-Mod) nor [Rattpak/S2MP-Mod](https://github.com/Rattpak/S2MP-Mod) currently declares a repository license. Their respective copyrights remain with their authors. Third-party files retain their own notices.
