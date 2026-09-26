@@ -43,4 +43,5 @@
 namespace mod_build
 {
 	constexpr int NUMBER = 33;
+	constexpr const char* VERSION = "1.0";
 }
