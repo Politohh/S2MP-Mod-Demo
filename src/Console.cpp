@@ -272,15 +272,18 @@ void Console::registerCustomDvars() {
 	DvarInterface::registerBool("printWorldInfo", 0, 0, "Prints GfxWorld build info on load");
 	DvarInterface::registerBool("g_dumpMapEnts", 0, 0, "Dump MapEnts when they are loaded");
 	DvarInterface::registerBool("g_dumpImages", 0, 0, "Dump Images when they are loaded. Can be unstable when loading maps. Best to turn off when doing so.");
+#endif
 
-	//zmcacutils.lua left in a check for a dvar named "unlockAllConsumables" so registering here makes the lua function work lol
+	// The retained unlockall command queues these names, and game scripts can
+	// query them while multiplayer UI starts. Keep them in the client build.
 	DvarInterface::registerBool("unlockAllConsumables", 0, 0, "Unlock all zombies consumables. Used by the unlockall command"); 
 	DvarInterface::registerBool("unlockAllPassivePerks", 0, 0, "Unlock all zombies passive perks. Used by the unlockall command"); 
 
-	//for gsc and any other system that still checks for this dvar
+	// Preserve the engine/GSC compatibility values across build configurations.
 	Functions::_Dvar_RegisterInt("850", 0, 0, 4, 0); //force_ranking
 	Functions::_Dvar_RegisterInt("5357", 0, 0, 1, 0); //isGamescomForceRankedMatch
 
+#ifndef S2MP_CINEMATIC_CLIENT
 	DvarInterface::registerFloat("cg_gun_x", 0.0, -3.4028235e38, 3.4028235e38, 0, "Forward position of the viewmodel");
 	DvarInterface::registerFloat("cg_gun_y", 0.0, -3.4028235e38, 3.4028235e38, 0, "Right position of the viewmodel");
 	DvarInterface::registerFloat("cg_gun_z", 0.0, -3.4028235e38, 3.4028235e38, 0, "Up position of the viewmodel");

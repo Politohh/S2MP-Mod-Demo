@@ -1,4 +1,4 @@
-S2MP Mod - Polito's cinematic build 31
+S2MP Mod - Polito's cinematic build 32
 
 This is an unofficial continuation of josh155/S2MP-Mod demo-w2dr,
 originally forked from Rattpak/S2MP-Mod. See CREDITS.md.
@@ -8,7 +8,7 @@ INSTALL
 2. Copy BOTH S2MP-Launcher.exe and s2mp-mod.dll beside your own
    s2_mp64_ship.exe. Replace the previous mod copies together.
 3. Start S2MP-Launcher.exe. Open the tools window with F9 or Insert.
-4. A fresh main\s2mp_console.log should contain "[s2mp] package build 31".
+4. A fresh main\s2mp_console.log should contain "[s2mp] package build 32".
 
 DOLLY: Play a demo, enable "Drive the camera" in Dolly, place points with
 K, delete the last point with L, and press J to rewind and play the path.

@@ -40,7 +40,8 @@
 //  29  experimental fractional dolly clock (source tag only; not shared)
 //  30  export-stutter timing diagnostics and optional fractional dolly clock
 //  31  drop unstable slow clock; Release is a cinematic-only client
+//  32  restore UI/unlockall compatibility dvars omitted by client build
 namespace mod_build
 {
-	constexpr int NUMBER = 31;
+	constexpr int NUMBER = 32;
 }
