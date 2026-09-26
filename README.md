@@ -2,7 +2,7 @@
 
 An unofficial Call of Duty: WWII (S2) multiplayer demo and camera toolkit. This repository continues the [`demo-w2dr` branch of josh155/S2MP-Mod](https://github.com/josh155/S2MP-Mod/tree/demo-w2dr), which is itself a fork of [Rattpak/S2MP-Mod](https://github.com/Rattpak/S2MP-Mod). The original commit history is retained. See [CREDITS.md](CREDITS.md) for provenance and third-party notices.
 
-This is an experimental, game-build-specific mod. The numbered release package is for testing; it is not a game copy. **Build 32** is the current package. The DLL prints `[s2mp] package build 32` in `main/s2mp_console.log` so test reports can be tied to the exact binary.
+This is an experimental, game-build-specific mod. The numbered release package is for testing; it is not a game copy. **Build 33** is the current package. The DLL prints `[s2mp] package build 33` in `main/s2mp_console.log` so test reports can be tied to the exact binary.
 
 ## Get started
 
@@ -34,6 +34,6 @@ Release builds no longer copy files into a developer-specific game directory. Us
 
 ## Feedback and provenance
 
-For a problem report, include the numbered ZIP name, the fresh `main/s2mp_console.log`, and, for bot issues, `S2CineBot.log` from the game directory. Describe what the game visibly did; an offline build or test cannot prove in-game behavior. See [Build 32 release notes](docs/RELEASE-BUILD-32.md) for this package's test focus.
+For a problem report, include the numbered ZIP name, the fresh `main/s2mp_console.log`, and, for bot issues, `S2CineBot.log` from the game directory. Describe what the game visibly did; an offline build or test cannot prove in-game behavior. See [Build 33 release notes](docs/RELEASE-BUILD-33.md) for this package's test focus.
 
 This repository does **not** declare a new license for the inherited S2MP code. Neither [josh155/S2MP-Mod](https://github.com/josh155/S2MP-Mod) nor [Rattpak/S2MP-Mod](https://github.com/Rattpak/S2MP-Mod) currently declares a repository license. Their respective copyrights remain with their authors. Third-party files retain their own notices.

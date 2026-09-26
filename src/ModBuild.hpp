@@ -41,7 +41,8 @@
 //  30  export-stutter timing diagnostics and optional fractional dolly clock
 //  31  drop unstable slow clock; Release is a cinematic-only client
 //  32  restore UI/unlockall compatibility dvars omitted by client build
+//  33  guard optional image-dump dvar in both texture loading hooks
 namespace mod_build
 {
-	constexpr int NUMBER = 32;
+	constexpr int NUMBER = 33;
 }
