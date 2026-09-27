@@ -1,5 +1,8 @@
 # S2MP Mod v1.0.1
 
+[![Release downloads](https://img.shields.io/github/downloads/Politohh/S2MP-Mod-Demo/total?label=release%20downloads)](https://github.com/Politohh/S2MP-Mod-Demo/releases)
+[![README views](https://hits.sh/github.com/Politohh/S2MP-Mod-Demo.svg?label=README%20views)](https://hits.sh/github.com/Politohh/S2MP-Mod-Demo/)
+
 ![S2MP demo tools open over a Call of Duty: WWII scene](docs/screenshots/demo-tools.png)
 
 Demo, camera, and recording tools for people making cinematics inside Call of Duty: WWII.
