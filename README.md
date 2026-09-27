@@ -1,6 +1,8 @@
 # S2MP Mod v1.0 — WWII cinematic toolkit
 
-An unofficial Call of Duty: WWII (S2) multiplayer demo and camera toolkit. This repository continues the [`demo-w2dr` branch of josh155/S2MP-Mod](https://github.com/josh155/S2MP-Mod/tree/demo-w2dr), which is itself a fork of [Rattpak/S2MP-Mod](https://github.com/Rattpak/S2MP-Mod). The original commit history is retained. See [CREDITS.md](CREDITS.md) for provenance and third-party notices.
+An unofficial Call of Duty: WWII (S2) multiplayer demo and camera toolkit, based on the [`demo-w2dr` branch of Josh's S2MP-Mod fork](https://github.com/josh155/S2MP-Mod/tree/demo-w2dr). Josh's fork builds on the [original S2MP-Mod by Rattpak](https://github.com/Rattpak/S2MP-Mod). The original commit history is retained.
+
+Josh (josh155) started the cinematic/demo development and, by Polito's estimate, did roughly **90% of the work on this version**. Josh then handed development to Polito and approved Polito continuing and releasing the client. Polito tested it while making edits and polished the demo, camera, and recording workflow from a video editor's perspective. serv contributed extensive in-game testing and feedback, and reported the main cinematic workflow working on his setup. See [CREDITS.md](CREDITS.md) for the source history and third-party notices.
 
 Version **1.0** packages Build 33, a rollback to the Build 30 code with `dolly_slow_clock` off by default. The DLL prints `[s2mp] version 1.0` and `[s2mp] package build 33` in `main/s2mp_console.log` so reports can be tied to the installed binary. This is a game-build-specific mod, not a copy of WWII.
 
@@ -34,8 +36,8 @@ Release builds no longer copy files into a developer-specific game directory. Us
 
 ## Feedback and provenance
 
-The v1.0 release has passed source-build, dolly-clock, dolly-curve, and package-integrity checks. The Build 33 rollback has not yet been verified in-game by serv. Bot F4 behavior and Bone Cam remain experimental; ProRes export can still show uneven motion when capture callbacks fall below the requested output FPS. It has not been certified for online or anti-cheat use.
+The v1.0 release has passed source-build, dolly-clock, dolly-curve, and package-integrity checks. serv has tested the client in-game and reported the main cinematic workflow working on his setup; the exact v1.0 ZIP has not been independently verified here in-game. Bot F4 behavior and Bone Cam remain experimental; ProRes export can still show uneven motion when capture callbacks fall below the requested output FPS. It has not been certified for online or anti-cheat use.
 
 For a problem report, include the ZIP name, the fresh `main/s2mp_console.log`, and, for bot issues, `S2CineBot.log` from the game directory. Describe what the game visibly did; an offline build cannot prove in-game behavior. See [v1.0 release notes](docs/RELEASE-BUILD-33.md) for this package's test focus.
 
-This repository does **not** declare a new license for the inherited S2MP code. Neither [josh155/S2MP-Mod](https://github.com/josh155/S2MP-Mod) nor [Rattpak/S2MP-Mod](https://github.com/Rattpak/S2MP-Mod) currently declares a repository license. Their respective copyrights remain with their authors. Third-party files retain their own notices.
+Josh approved Polito's continuation and release of his work on this client; this README does not claim that approval covers rights held by other contributors. This repository does **not** declare a new license for the inherited S2MP code. Neither [josh155/S2MP-Mod](https://github.com/josh155/S2MP-Mod) nor [Rattpak/S2MP-Mod](https://github.com/Rattpak/S2MP-Mod) currently declares a repository license. Their respective copyrights remain with their authors. Third-party files retain their own notices.
