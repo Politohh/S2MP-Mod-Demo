@@ -45,7 +45,7 @@ namespace demo
 		// After demo_native -- it repoints two instructions and uses
 		// demo_native::transport() for the engine screenshot.
 		demo_camera::init();
-		// Frame-rate cap unlocked past the engine's own 250 ceiling. No
+		// Frame-rate cap extended to 1000. No
 		// dependency on either demo system -- works in live play too.
 		demo_display::init();
 		demo_player::init();

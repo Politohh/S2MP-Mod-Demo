@@ -3,6 +3,7 @@
 //	Utility functions for the mod
 /////////////////////////////////////////
 #include "pch.h"
+#include "BuildMap.hpp"
 #include "GameUtil.hpp"
 
 #include <sstream>
@@ -273,6 +274,19 @@ float GameUtil::getDvarSecureFloat(const dvar_t* dvar) {
     return decodeDvarSecureFloat(dvar);
 }
 
+int GameUtil::getDvarSecureInt(const dvar_t* dvar) {
+    if (!dvar || dvar->type != DVAR_TYPE_INT_SECURE) {
+        return 0;
+    }
+    if (build_map::current() == build_map::Build::Store) {
+        return 0; // this Steam getter has no verified Store mapping
+    }
+    // S2 Dvar_GetInt at IDA 0xAF2D0 (runtime RVA 0xAF2D0), verified in
+    // the unpacked Steam engine image. It decodes the 16-byte current value.
+    using Dvar_GetInt_fn = int(__fastcall*)(const dvar_t*);
+    return reinterpret_cast<Dvar_GetInt_fn>(0xAE2D0_b)(dvar);
+}
+
 void GameUtil::setDvarSecureFloat(dvar_t* dvar, float newValue) {
     if (!dvar || dvar->type != DVAR_TYPE_FLOAT_SECURE) {
         return;
@@ -456,7 +470,8 @@ std::string GameUtil::dvarValueToString(const dvar_t* dvar, bool showQuotesAroun
         return std::to_string(dvar->current.integer);
 
     case DVAR_TYPE_INT_SECURE:
-        return "UNKNOWN TYPE. Send this dvar to Rattpak please!";
+        return build_map::current() == build_map::Build::Store
+            ? "<secure int>" : std::to_string(getDvarSecureInt(dvar));
 
     case DVAR_TYPE_FLOAT_SECURE:
         return floatToString(decodeDvarSecureFloat(dvar));

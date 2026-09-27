@@ -1,4 +1,4 @@
-S2MP Mod v1.0 - cinematic build 33 (Build 30 rollback)
+S2MP Mod v1.0.1 - Build 34
 
 This is an unofficial continuation of josh155/S2MP-Mod demo-w2dr,
 originally forked from Rattpak/S2MP-Mod. See CREDITS.md.
@@ -7,9 +7,10 @@ INSTALL
 1. Close Call of Duty: WWII.
 2. Copy BOTH S2MP-Launcher.exe and s2mp-mod.dll beside your own
    s2_mp64_ship.exe. Replace the previous mod copies together.
-3. Start S2MP-Launcher.exe. Open the tools window with F9 or Insert.
-4. A fresh main\s2mp_console.log should contain "[s2mp] version 1.0"
-   and "[s2mp] package build 33".
+3. Start S2MP-Launcher.exe and click Multiplayer. Open the tools
+   window with F9 or Insert.
+4. The console's com_maxfps range is now 0..1000. You can set
+   com_maxfps 1000 there or use the FPS control in the mod.
 
 DOLLY: Play a demo, enable "Drive the camera" in Dolly, place points with
 K, delete the last point with L, and press J to rewind and play the path.
@@ -21,9 +22,5 @@ see RESHADE-SETUP.txt for the post-effects requirement.
 
 CINEBOT: In a private/custom match, ADS + your bound Use key spawns a
 bot at the crosshair. F7 moves the selected bot; F8 toggles freeze.
-F4's directed run is awaiting in-game validation. See
-RELEASE-NOTES.md for its test steps. Bone Cam remains experimental.
 
-For problems, send the fresh main\s2mp_console.log and, for bot issues,
-the S2CineBot.log in the game directory. The game executable, FFmpeg,
-and ReShade are not included in this ZIP.
+The game executable, FFmpeg, and ReShade are not included in this ZIP.

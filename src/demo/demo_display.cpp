@@ -21,7 +21,7 @@ namespace demo_display
 		//
 		// off_14DB7B0 is a POINTER to the dvar (Com_InitDvars assigns the
 		// registrar's return value straight into it), same shape as
-		// demo_camera's cg_fov pointer. The value sits at dvar+16.
+		// demo_camera's cg_fov pointer. Its current value is secure-encoded.
 		//
 		// RULE A14: the _b literal is resolved inside a function, never at
 		// namespace scope.
@@ -54,37 +54,42 @@ namespace demo_display
 			return want >= start && want + n <= end;
 		}
 
-		// Resolves the dvar_t* the pointer variable holds, or nullptr.
-		[[nodiscard]] std::uintptr_t resolve_dvar()
+		// Resolves the engine's secure-int dvar after Com_InitDvars.
+		[[nodiscard]] dvar_t* resolve_dvar()
 		{
 			auto* slot = reinterpret_cast<std::uintptr_t*>(maxfps_dvar_ptr_addr());
 			if (!readable(slot, sizeof(std::uintptr_t)))
 			{
-				return 0;
+				return nullptr;
 			}
-			const auto dvar = *slot;
-			if (!readable(reinterpret_cast<void*>(dvar), 20))
+			auto* dvar = reinterpret_cast<dvar_t*>(*slot);
+			if (!readable(dvar, sizeof(dvar_t)) || dvar->type != DVAR_TYPE_INT_SECURE)
 			{
-				return 0;
+				return nullptr;
 			}
 			return dvar;
 		}
 
-		// Bypasses the dvar's own (Arxan-obfuscated) getter entirely and
-		// reads the plain storage, same as demo_camera::fov().
-		bool write_raw(const int fps)
+		// Registration gives com_maxfps a 0..250 domain. Widen the real
+		// domain so both the engine console and the mod UI can use 1000.
+		// Do this again if the game re-registers the dvar on a map change.
+		bool ensure_domain()
 		{
-			const auto dvar = resolve_dvar();
-			if (!dvar)
+			auto* dvar = resolve_dvar();
+			if (!dvar || dvar->domain.integer.min != 0)
 			{
 				return false;
 			}
-			*reinterpret_cast<std::int32_t*>(dvar + 16) = fps;
-			return true;
+			if (dvar->domain.integer.max == 250)
+			{
+				dvar->domain.integer.max = 1000;
+			}
+			return dvar->domain.integer.max == 1000;
 		}
 
 		int g_target = -1;
 		bool g_holding = false;
+		ULONGLONG g_last_command_ms = 0;
 		// Guards the ONE-TIME "apply whatever was saved last session" step
 		// in tick() -- set the first time com_maxfps becomes resolvable,
 		// whether or not a saved preference actually existed, so it is
@@ -131,10 +136,8 @@ namespace demo_display
 				}
 				else
 				{
-					Console::printf("fps cap: %d   (demo_fps <0..1000>; 0 = uncapped, "
-						"250 is the engine's own ceiling -- higher writes the raw dvar. "
-						"Whatever you set here is remembered and re-applied on every "
-						"future launch, in live play as well as demos.)", v);
+					Console::printf("fps cap: %d   (com_maxfps or demo_fps <0..1000>; "
+						"0 = uncapped. demo_fps also saves the choice for future launches.)", v);
 				}
 				return;
 			}
@@ -146,15 +149,13 @@ namespace demo_display
 
 	int fps_cap()
 	{
-		const auto dvar = resolve_dvar();
+		const auto* dvar = resolve_dvar();
 		if (!dvar)
 		{
 			return -1;
 		}
-		const int v = *reinterpret_cast<std::int32_t*>(dvar + 16);
-		// An unregistered dvar reads as junk -- sanity check rather than
-		// handing the GUI a slider position of a billion.
-		return (v >= 0 && v <= 100000) ? v : -1;
+		const int v = GameUtil::getDvarSecureInt(dvar);
+		return (v >= 0 && v <= 1000) ? v : -1;
 	}
 
 	bool fps_cap_available()
@@ -166,26 +167,11 @@ namespace demo_display
 	{
 		fps = std::clamp(fps, 0, 1000);
 		g_target = fps;
-		// Hold at ANY value now, not just above 250: `com_maxfps` is an
-		// archived dvar, and the engine re-applies the archived value
-		// through its own domain-clamped setter on every boot, which is
-		// the "reverts on its own" behaviour this whole persistence layer
-		// exists to fix. Re-asserting below 250 too closes that gap
-		// instead of only closing it for the unlocked range.
 		g_holding = true;
-
-		if (fps <= 250)
+		if (ensure_domain() &&
+			GameUtil::Cbuf_AddText(LOCAL_CLIENT_0, std::format("com_maxfps {}", fps)))
 		{
-			// Inside the engine's own domain -- through the console, so its
-			// setter runs on the client thread and any change callback fires.
-			// Exactly demo_camera::set_fov()'s reasoning.
-			GameUtil::Cbuf_AddText(LOCAL_CLIENT_0, std::format("com_maxfps {}", fps));
-		}
-		else
-		{
-			// Past the registered ceiling the console setter clamps to 250,
-			// so the raw slot is the only way past it.
-			write_raw(fps);
+			g_last_command_ms = GetTickCount64();
 		}
 
 		// This is now the standing preference -- every future launch should
@@ -195,6 +181,10 @@ namespace demo_display
 
 	void tick()
 	{
+		if (!ensure_domain())
+		{
+			return;
+		}
 		if (!g_holding)
 		{
 			// Nothing chosen yet THIS session. The moment the dvar becomes
@@ -214,13 +204,14 @@ namespace demo_display
 			}
 			return;
 		}
-		// Compare-then-write: com_maxfps is archived, so a config reload,
-		// map change, or anything else touching it through the normal
-		// setter can clamp it back into the registered 0..250 domain. This
-		// costs one int compare per frame and closes that gap unconditionally.
-		if (fps_cap() != g_target)
+		// The normal engine setter keeps the secure-int encoding valid.
+		// Retry at most four times per second if an archived config or map
+		// transition restores an older value.
+		const auto now = GetTickCount64();
+		if (fps_cap() != g_target && now - g_last_command_ms >= 250 &&
+			GameUtil::Cbuf_AddText(LOCAL_CLIENT_0, std::format("com_maxfps {}", g_target)))
 		{
-			write_raw(g_target);
+			g_last_command_ms = now;
 		}
 	}
 

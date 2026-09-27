@@ -2236,55 +2236,12 @@ namespace demo_gui
 				}
 				else
 				{
-					static bool s_unlock = cur > 250;
-					// Follow the engine's own value if something else changed
-					// it while the checkbox was off, rather than fighting it.
-					if (!s_unlock && cur > 250)
-					{
-						s_unlock = true;
-					}
-
 					int v = cur;
 					ImGui::SetNextItemWidth(260.0f);
-					if (!s_unlock)
+					if (ImGui::SliderInt("FPS##fps2", &v, 0, 1000,
+						v == 0 ? "uncapped" : "%d"))
 					{
-						if (ImGui::SliderInt("FPS##fps2", &v, 0, 250, v == 0 ? "uncapped" : "%d"))
-						{
-							demo_display::set_fps_cap(v);
-						}
-					}
-					else
-					{
-						if (ImGui::SliderInt("FPS##fps2", &v, 30, 1000, "%d"))
-						{
-							demo_display::set_fps_cap(v);
-						}
-					}
-
-					ImGui::SameLine();
-					if (ImGui::Checkbox("Unlock past 250", &s_unlock))
-					{
-						// Snap to something sane on the way in/out so the
-						// slider does not silently sit at an out-of-range
-						// value for the mode it is now in.
-						if (s_unlock && cur <= 250)
-						{
-							demo_display::set_fps_cap((std::max)(cur, 250));
-						}
-						else if (!s_unlock && cur > 250)
-						{
-							demo_display::set_fps_cap(250);
-						}
-					}
-					if (ImGui::IsItemHovered())
-					{
-						ImGui::SetTooltip(
-							"com_maxfps is registered with a hard 0..250 domain, so the\n"
-							"console command and the stock slider both clamp there. This\n"
-							"writes the dvar's raw value directly to get past it -- the\n"
-							"same technique already used for the free-camera speed and\n"
-							"third-person framing.\n\n"
-							"0 (only reachable below 250) is the engine's own uncapped.");
+						demo_display::set_fps_cap(v);
 					}
 
 					ImGui::Spacing();
@@ -2816,8 +2773,7 @@ namespace demo_gui
 			// Holds the lobby at the map/gametype/playlist you chose. Compare-then-
 			// write, so in steady state it issues nothing at all.
 			force_host::tick();
-			// Re-asserts the frame-rate cap while it is unlocked past 250.
-			// No-op below that -- see demo_display.hpp for why.
+			// Widens com_maxfps to 1000 and restores the saved cap if needed.
 			demo_display::tick();
 			cinebot::tick();
 			reshade_capture::tick();

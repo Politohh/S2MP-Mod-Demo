@@ -30,6 +30,8 @@ public:
 	// float gives garbage. The caller must have checked the type and that
 	// dvar+0x10..+0x1F is readable.
 	static float getDvarSecureFloat(const dvar_t* dvar);
+	// Uses the engine's secure-int getter; current.integer is encoded for type 0x0C.
+	static int getDvarSecureInt(const dvar_t* dvar);
 	static std::string dvarValueToString(const dvar_t* dvar, bool showQuotesAroundStrings, bool truncateFloats);
 	static std::string getDvarDomainAsString(const dvar_t* dvar);
 	static std::string toLower(const std::string& str);

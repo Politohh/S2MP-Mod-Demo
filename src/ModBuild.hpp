@@ -40,8 +40,9 @@
 //  29  experimental fractional dolly clock (source tag only; not shared)
 //  30  export-stutter timing diagnostics and optional fractional dolly clock
 //  33  Build 30 rollback with dolly_slow_clock off by default
+//  34  com_maxfps secure-int domain extended to 1000
 namespace mod_build
 {
-	constexpr int NUMBER = 33;
-	constexpr const char* VERSION = "1.0";
+	constexpr int NUMBER = 34;
+	constexpr const char* VERSION = "1.0.1";
 }

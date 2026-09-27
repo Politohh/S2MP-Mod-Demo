@@ -1,4 +1,4 @@
-# S2MP Mod v1.0
+# S2MP Mod v1.0.1
 
 This is the Call of Duty: WWII client I've been using for demos and cinematics.
 
@@ -6,11 +6,11 @@ I didn't build it from scratch. [Rattpak made the original S2MP Mod](https://git
 
 I'm Polito. I came at this as an editor: I used the client to make cines, tested it as I went, and polished the demo, dolly, camera, and recording tools around that workflow. serv tested the builds with me, caught a lot of issues, and confirmed the demo and dolly workflow is working on his setup. Thanks to both of them, and to Rattpak for the original project. The original Git history is still here; [CREDITS.md](CREDITS.md) has the full source and third-party credits.
 
-v1.0 is Build 33. I went back to the Build 30 code because that was the version that worked best for us, then set dolly_slow_clock to 0 by default. You can still turn it on with dolly_slow_clock 1.
+v1.0.1 is Build 34. It keeps the Build 30-based cinematic setup and the default `dolly_slow_clock 0`. I also raised `com_maxfps` to 1000, so you can set it from the console or the FPS control.
 
 ## Install
 
-1. Download [S2MP-Mod-v1.0-build-33.zip](https://github.com/Politohh/S2MP-Mod-Polito/releases/download/v1.0/S2MP-Mod-v1.0-build-33.zip) and extract it.
+1. Download [S2MP-Mod-v1.0.1-build-34.zip](https://github.com/Politohh/S2MP-Mod-Polito/releases/download/v1.0.1/S2MP-Mod-v1.0.1-build-34.zip) and extract it.
 2. Close WWII. Put both S2MP-Launcher.exe and s2mp-mod.dll next to your s2_mp64_ship.exe, replacing any older copies.
 3. Start S2MP-Launcher.exe and choose Multiplayer. Press F9 or Insert to open the tools menu.
 
