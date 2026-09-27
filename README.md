@@ -1,5 +1,7 @@
 # S2MP Mod v1.0.1
 
+![S2MP demo tools open over a Call of Duty: WWII scene](docs/screenshots/demo-tools.png)
+
 This is the Call of Duty: WWII client I've been using for demos and cinematics.
 
 I didn't build it from scratch. [Rattpak made the original S2MP Mod](https://github.com/Rattpak/S2MP-Mod), and [Josh (josh155) built on it in his demo-w2dr branch](https://github.com/josh155/S2MP-Mod/tree/demo-w2dr). Josh started the cinematic side and did about 90% of the work on this version. He later handed it over to me and gave me the go-ahead to keep working on it and release it.
@@ -26,6 +28,20 @@ The ZIP includes the launcher, mod DLL, instructions, and hashes. It does not in
 - CineBot is there for private/custom matches. ADS + your Use key spawns a bot at the crosshair; F7 moves the selected bot and F8 toggles freeze.
 
 This rollback also includes the Host, Servers, Players, and developer controls from Build 30.
+
+## In game
+
+The dolly path, with three camera points placed in a demo:
+
+![Three camera points and the Dolly tab in a WWII demo](docs/screenshots/dolly-path.png)
+
+The Recording tab, set up for ProRes:
+
+![ProRes recording settings over a WWII cinematic scene](docs/screenshots/prores-recording.png)
+
+And a frame from the finished camera work:
+
+![Cinematic frame of a soldier in a snowy WWII scene](docs/screenshots/cinematic-frame.png)
 
 ## Build from source
 
