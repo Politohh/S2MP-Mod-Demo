@@ -12,7 +12,7 @@ v1.0.1 is Build 34. It keeps the Build 30-based cinematic tools, sets `dolly_slo
 
 ## Install
 
-1. Download [S2MP-Mod-v1.0.1-build-34.zip](https://github.com/Politohh/S2MP-Mod-Polito/releases/download/v1.0.1/S2MP-Mod-v1.0.1-build-34.zip) and extract it.
+1. Download [S2MP-Mod-v1.0.1-build-34.zip](https://github.com/Politohh/S2MP-Mod-Demo/releases/download/v1.0.1/S2MP-Mod-v1.0.1-build-34.zip) and extract it.
 2. Close WWII. Put both S2MP-Launcher.exe and s2mp-mod.dll next to your s2_mp64_ship.exe, replacing any older copies.
 3. Start S2MP-Launcher.exe and choose Multiplayer. Press F9 or Insert to open the tools menu.
 
