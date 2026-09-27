@@ -39,9 +39,11 @@ The Recording tab, set up for ProRes:
 
 ![ProRes recording settings over a WWII cinematic scene](docs/screenshots/prores-recording.png)
 
-An example in-game frame:
+Example in-game frames:
 
 ![Cinematic frame](docs/screenshots/cinematic-frame.png)
+
+![Second cinematic frame](docs/screenshots/cinematic-frame-2.png)
 
 ## Build from source
 
