@@ -6,8 +6,6 @@ Demo, camera, and recording tools for people making cinematics inside Call of Du
 
 [Rattpak made the original S2MP Mod](https://github.com/Rattpak/S2MP-Mod). [Josh (josh155) built the demo-w2dr branch](https://github.com/josh155/S2MP-Mod/tree/demo-w2dr) and did about 90% of the work on this version. Josh handed the project to Polito and approved its release. serv tested the builds and helped catch issues. The original Git history is still here; [CREDITS.md](CREDITS.md) has the source and third-party credits.
 
-Polito now works on 3D cinematics. This client is here for people who still film inside the game.
-
 v1.0.1 is Build 34. It keeps the Build 30-based cinematic tools, sets `dolly_slow_clock 0` by default, and raises the `com_maxfps` limit to 1000.
 
 ## Install
@@ -41,7 +39,7 @@ The Recording tab, set up for ProRes:
 
 An example in-game frame:
 
-![Cinematic frame of a soldier in a snowy WWII scene](docs/screenshots/cinematic-frame.png)
+![Cinematic frame](docs/screenshots/cinematic-frame.png)
 
 ## Build from source
 
