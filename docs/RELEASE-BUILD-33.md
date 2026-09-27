@@ -1,7 +1,12 @@
-# v1.0 — Build 33 rollback, slow clock off by default
+# S2MP Mod v1.0 (Build 33)
 
-Version 1.0 packages Build 33, a rollback to the Build 30 source after the cinematic-client builds 31–33 failed to launch reliably for serv. `dolly_slow_clock` now starts at `0` (off), matching the setting serv reported smooth. The command remains available; `dolly_slow_clock 1` enables the experimental clock for a session. The version label adds a startup log line; camera and gameplay behavior is otherwise the Build 33 rollback.
+This is the Build 30-based version with `dolly_slow_clock` off by default.
 
-The Build 30 feature set returns, including the developer, Host, Servers, and Players controls that were removed in the failed cinematic-client builds. Use this release for private cinematic testing. It is not certified for online or anti-cheat use. Bone Cam and CineBot's F4 directed run remain experimental. ProRes capture may still show uneven motion when the source callback rate falls below the requested output FPS.
+## Install and launch
 
-**Test:** close WWII, replace both `S2MP-Launcher.exe` and `s2mp-mod.dll` from this ZIP, then launch Multiplayer. A fresh `main/s2mp_console.log` must say `[s2mp] version 1.0`, `[s2mp] package build 33`, and `[dolly] slow clock default: OFF`. Check that the multiplayer menu opens. Play the same 0.05× dolly without entering a slow-clock command, then record a short ProRes clip. Send the fresh log and say whether the live view and export are smooth. If the game crashes, send the new dump as well. In-game behavior remains unverified until serv tests this release.
+1. Download `S2MP-Mod-v1.0-build-33.zip` below and extract it.
+2. Close Call of Duty: WWII. Copy **both** `S2MP-Launcher.exe` and `s2mp-mod.dll` into your WWII game folder, next to `s2_mp64_ship.exe`. Replace the older copies if you have them.
+3. Run `S2MP-Launcher.exe` and click **Multiplayer**.
+4. Once the game opens, press **F9** or **Insert** to open the tools menu. **F1** opens the timeline.
+
+The game itself is not included in the download.
