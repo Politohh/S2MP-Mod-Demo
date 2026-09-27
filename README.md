@@ -1,43 +1,36 @@
-# S2MP Mod v1.0 — WWII cinematic toolkit
+# S2MP Mod v1.0
 
-An unofficial Call of Duty: WWII (S2) multiplayer demo and camera toolkit, based on the [`demo-w2dr` branch of Josh's S2MP-Mod fork](https://github.com/josh155/S2MP-Mod/tree/demo-w2dr). Josh's fork builds on the [original S2MP-Mod by Rattpak](https://github.com/Rattpak/S2MP-Mod). The original commit history is retained.
+This is the Call of Duty: WWII client I've been using for demos and cinematics.
 
-Josh (josh155) started the cinematic/demo development and, by Polito's estimate, did roughly **90% of the work on this version**. Josh then handed development to Polito and approved Polito continuing and releasing the client. Polito tested it while making edits and polished the demo, camera, and recording workflow from a video editor's perspective. serv contributed extensive in-game testing and feedback, and reported the main cinematic workflow working on his setup. See [CREDITS.md](CREDITS.md) for the source history and third-party notices.
+I didn't build it from scratch. [Rattpak made the original S2MP Mod](https://github.com/Rattpak/S2MP-Mod), and [Josh (josh155) built on it in his demo-w2dr branch](https://github.com/josh155/S2MP-Mod/tree/demo-w2dr). Josh started the cinematic side and did about 90% of the work on this version. He later handed it over to me and gave me the go-ahead to keep working on it and release it.
 
-Version **1.0** packages Build 33, a rollback to the Build 30 code with `dolly_slow_clock` off by default. The DLL prints `[s2mp] version 1.0` and `[s2mp] package build 33` in `main/s2mp_console.log` so reports can be tied to the installed binary. This is a game-build-specific mod, not a copy of WWII.
+I'm Polito. I came at this as an editor: I used the client to make cines, tested it as I went, and polished the demo, dolly, camera, and recording tools around that workflow. serv tested the builds with me, caught a lot of issues, and confirmed the demo and dolly workflow is working on his setup. Thanks to both of them, and to Rattpak for the original project. The original Git history is still here; [CREDITS.md](CREDITS.md) has the full source and third-party credits.
 
-## Get started
+v1.0 is Build 33. I went back to the Build 30 code because that was the version that worked best for us, then set dolly_slow_clock to 0 by default. You can still turn it on with dolly_slow_clock 1.
 
-1. Download `S2MP-Mod-v1.0-build-33.zip` from the [v1.0 release](https://github.com/Politohh/S2MP-Mod-Polito/releases/tag/v1.0). Extract `S2MP-Launcher.exe` and `s2mp-mod.dll` beside your own `s2_mp64_ship.exe`.
-2. Close the game before replacing either file. Start it with `S2MP-Launcher.exe`.
-3. Open the tools window with **F9** or **Insert**. **F1** toggles the timeline.
-4. Record or select a multiplayer demo on the **Demos** tab. In **Dolly**, enable **Drive the camera**, place points, and press **J** to rewind and play the path.
+## Install
 
-The ZIP includes installation instructions and SHA-256 hashes. The game executable, ReShade, and FFmpeg are not redistributed here.
+1. Download [S2MP-Mod-v1.0-build-33.zip](https://github.com/Politohh/S2MP-Mod-Polito/releases/download/v1.0/S2MP-Mod-v1.0-build-33.zip) and extract it.
+2. Close WWII. Put both S2MP-Launcher.exe and s2mp-mod.dll next to your s2_mp64_ship.exe, replacing any older copies.
+3. Start S2MP-Launcher.exe and choose Multiplayer. Press F9 or Insert to open the tools menu.
 
-## What is in this build
+The ZIP includes the launcher, mod DLL, instructions, and hashes. It does not include the game, FFmpeg, or ReShade.
 
-| Area | Current state |
-| --- | --- |
-| Demos and dolly | Native demo playback, free camera, camera points, path playback, rewinds, FOV, and world-camera roll. The optional fractional camera clock is **off by default** (`dolly_slow_clock 0`); `dolly_slow_clock 1` enables it. |
-| Recording | Native demo recording and an FFmpeg/ProRes capture tab. Capture logs source-frame cadence and capture pressure at stop to diagnose export-only stutter. ReShade effects require a compatible full add-on ReShade installation; see the package's `RESHADE-SETUP.txt`. **F5** starts or stops capture. |
-| CineBot | In a private/custom match, **ADS + bound Use** spawns at the crosshair, **F7** moves the selected bot, and **F8** toggles freeze. **F4** attempts a straight run toward a snapshot of the player's position. The Build 28 F4 command interception is **awaiting in-game validation**. |
-| HUD | The **No HUD** control toggles the game's `cg_draw2D` setting. |
-| Bone Cam | Still experimental; do not rely on it for a shoot. |
-| Host and developer controls | The Build 30 rollback includes the Host, Servers, Players, and developer controls. Use this mod for private cinematic testing. |
+## Making a cine
 
-Camera shortcuts: **K** adds a dolly point, **L** removes the last point, **J** rewinds and plays the path, and **Left Arrow** seeks back ten seconds. Some shortcuts are ignored while the UI is focused. In free camera, the mouse wheel adjusts roll and **Alt + wheel** adjusts FOV. Camera speed can be reduced in the UI. Demo speed can reach **0.05×**; lower speeds previously caused severe stutter on the test machine.
+- Record a match or open a demo in the Demos tab. F1 opens the timeline.
+- Go to Dolly and turn on **Drive the camera**. K places a camera point, L removes the last one, and J rewinds and plays the path.
+- Left Arrow skips the demo back ten seconds. In free cam, use the mouse wheel for roll or Alt + wheel for FOV. Camera speed and demo timescale are in the menu.
+- The camera tools include FOV, roll, third-person framing, and No HUD.
+- The Recording tab can capture ProRes through FFmpeg. F5 starts or stops capture. ReShade effects need the compatible add-on setup in [RESHADE-SETUP.txt](docs/RESHADE-SETUP.txt).
+- CineBot is there for private/custom matches. ADS + your Use key spawns a bot at the crosshair; F7 moves the selected bot and F8 toggles freeze.
+
+This rollback also includes the Host, Servers, Players, and developer controls from Build 30.
 
 ## Build from source
 
-The source and dependency trees are in this repository. On Windows, use Visual Studio 2022 or later with the C++ desktop workload and Windows SDK. Generate the solution with `tools/premake5.exe vs2022`, then build `s2mp-mod.sln` as **Release | x64**. The output is under `bin/Release/`. The launcher EXE is a separately supplied upstream binary; this repository builds the mod DLL.
+On Windows, use Visual Studio 2022 with the C++ desktop workload and Windows SDK. Run tools/premake5.exe vs2022, then build s2mp-mod.sln as Release | x64. The DLL will be in bin/Release/. The launcher is a separate upstream binary.
 
-Release builds no longer copy files into a developer-specific game directory. Use your own install path when testing. Engine hooks and CineBot offsets target the exact WWII executable described in `src/net/cinebot_constants.hpp`; other game versions are not validated.
+If something goes wrong, send me the fresh main/s2mp_console.log. For bot issues, also include S2CineBot.log from the game directory.
 
-## Feedback and provenance
-
-The v1.0 release has passed source-build, dolly-clock, dolly-curve, and package-integrity checks. serv has tested the client in-game and reported the main cinematic workflow working on his setup; the exact v1.0 ZIP has not been independently verified here in-game. Bot F4 behavior and Bone Cam remain experimental; ProRes export can still show uneven motion when capture callbacks fall below the requested output FPS. It has not been certified for online or anti-cheat use.
-
-For a problem report, include the ZIP name, the fresh `main/s2mp_console.log`, and, for bot issues, `S2CineBot.log` from the game directory. Describe what the game visibly did; an offline build cannot prove in-game behavior. See [v1.0 release notes](docs/RELEASE-BUILD-33.md) for this package's test focus.
-
-Josh approved Polito's continuation and release of his work on this client; this README does not claim that approval covers rights held by other contributors. This repository does **not** declare a new license for the inherited S2MP code. Neither [josh155/S2MP-Mod](https://github.com/josh155/S2MP-Mod) nor [Rattpak/S2MP-Mod](https://github.com/Rattpak/S2MP-Mod) currently declares a repository license. Their respective copyrights remain with their authors. Third-party files retain their own notices.
+I haven't added a new license to the inherited S2MP code. See [CREDITS.md](CREDITS.md) for the project history and notices.
