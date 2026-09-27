@@ -6,7 +6,7 @@ Demo, camera, and recording tools for people making cinematics inside Call of Du
 
 You can also play normally on Steam servers with the client running. Turn on automatic match recording in the Demos tab, then open a saved demo later to watch what happened or film it with the free camera and dolly tools.
 
-[Rattpak made the original S2MP Mod](https://github.com/Rattpak/S2MP-Mod). [Josh (josh155) built the demo-w2dr branch](https://github.com/josh155/S2MP-Mod/tree/demo-w2dr) and did about 90% of the work on this version. Josh handed the project to Polito and approved its release. serv tested the builds and helped catch issues. The original Git history is still here; [CREDITS.md](CREDITS.md) has the source and third-party credits.
+[Rattpak made the original S2MP Mod](https://github.com/Rattpak/S2MP-Mod). [Josh (josh155) built the demo-w2dr branch](https://github.com/josh155/S2MP-Mod/tree/demo-w2dr) and did about 90% of the work on this version. Josh handed the project to me and approved its release. serv tested the builds and helped catch issues. The original Git history is still here; [CREDITS.md](CREDITS.md) has the source and third-party credits.
 
 v1.0.1 is Build 34. It keeps the Build 30-based cinematic tools, sets `dolly_slow_clock 0` by default, and raises the `com_maxfps` limit to 1000.
 
