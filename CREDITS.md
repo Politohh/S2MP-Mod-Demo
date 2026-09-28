@@ -6,4 +6,6 @@
 
 The upstream repositories do not currently provide a repository-level license. This file acknowledges provenance; it does not grant permission to use, redistribute, or relicense code owned by others. ReShade API headers in `src/third_party/reshade` carry their own notice in `src/third_party/reshade/LICENSE.md`. Other bundled dependencies retain their respective notices in their directories.
 
-The release archive contains only the S2MP launcher and mod DLL, documentation, hashes, and the ReShade header notice. It does not include the Call of Duty: WWII executable, FFmpeg, or ReShade binaries.
+From v1.0.2 (Build 35), the release archive includes the S2MP launcher, mod DLL, documentation, hashes, the ReShade header notice, and a standalone FFmpeg executable for ProRes recording. It does not include the Call of Duty: WWII executable or ReShade binaries.
+
+FFmpeg 9.0.2 is built from the [official FFmpeg source](https://ffmpeg.org/download.html) under LGPL version 2.1 or later, with GPL, nonfree, and external codec libraries disabled. The client launches it as a separate process. The archive's `FFmpeg` folder includes the license, matching unmodified source, build script, build configuration, and toolchain notices. The build script is also in [tools/Build-CaptureFFmpeg.sh](tools/Build-CaptureFFmpeg.sh).

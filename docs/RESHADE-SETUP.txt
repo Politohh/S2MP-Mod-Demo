@@ -11,5 +11,5 @@ check main\s2mp_console.log for "first ReShade post-effects frame
 captured" and compare a frame in the MOV with the game display.
 
 If the hook is unavailable, normal game-frame capture still works but
-the recording may not show ReShade effects. ReShade and FFmpeg binaries
-are not included in this package; obtain them from their publishers.
+the recording may not show ReShade effects. FFmpeg is included in this
+package. ReShade is optional and must be installed separately.

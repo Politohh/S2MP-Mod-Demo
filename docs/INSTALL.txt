@@ -1,12 +1,13 @@
-S2MP Mod v1.0.1 - Build 34
+S2MP Mod v1.0.2 - Build 35
 
 This is an unofficial continuation of josh155/S2MP-Mod demo-w2dr,
 originally forked from Rattpak/S2MP-Mod. See CREDITS.md.
 
 INSTALL
 1. Close Call of Duty: WWII.
-2. Copy BOTH S2MP-Launcher.exe and s2mp-mod.dll beside your own
-   s2_mp64_ship.exe. Replace the previous mod copies together.
+2. Copy all extracted files and folders beside your own s2_mp64_ship.exe.
+   This includes S2MP-Launcher.exe, s2mp-mod.dll, ffmpeg.exe, and the
+   FFmpeg folder. Replace previous copies when asked.
 3. Start S2MP-Launcher.exe and click Multiplayer. Open the tools
    window with F9 or Insert.
 4. The console's com_maxfps range is now 0..1000. You can set
@@ -17,10 +18,12 @@ K, delete the last point with L, and press J to rewind and play the path.
 Left Arrow seeks back ten seconds. F1 toggles the timeline.
 
 RECORDING: The Recording tab controls FFmpeg/ProRes output. F5 starts
-or stops capture. FFmpeg and optional ReShade are separate installs;
-see RESHADE-SETUP.txt for the post-effects requirement.
+or stops capture. FFmpeg is included and detected automatically.
+ReShade is optional and installed separately; see RESHADE-SETUP.txt
+for the post-effects requirement.
 
 CINEBOT: In a private/custom match, ADS + your bound Use key spawns a
 bot at the crosshair. F7 moves the selected bot; F8 toggles freeze.
 
-The game executable, FFmpeg, and ReShade are not included in this ZIP.
+The game executable and ReShade are not included in this ZIP.
+FFmpeg's license, source, and build details are in the FFmpeg folder.

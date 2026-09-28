@@ -41,8 +41,9 @@
 //  30  export-stutter timing diagnostics and optional fractional dolly clock
 //  33  Build 30 rollback with dolly_slow_clock off by default
 //  34  com_maxfps secure-int domain extended to 1000
+//  35  bundled FFmpeg for drag-and-drop ProRes recording
 namespace mod_build
 {
-	constexpr int NUMBER = 34;
-	constexpr const char* VERSION = "1.0.1";
+	constexpr int NUMBER = 35;
+	constexpr const char* VERSION = "1.0.2";
 }

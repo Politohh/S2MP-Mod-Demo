@@ -1,0 +1,38 @@
+FFmpeg for S2MP ProRes capture
+
+The included ffmpeg.exe is a standalone Windows x64 build of FFmpeg 9.0.2.
+It reads the client's raw video frames and writes ProRes MOV recordings.
+It is built for this capture workflow, not as a general-purpose FFmpeg install.
+No additional FFmpeg DLLs or installer are needed.
+
+Put ffmpeg.exe beside s2_mp64_ship.exe. The client finds it automatically.
+Keep this FFmpeg folder with the executable when sharing the package.
+You may replace ffmpeg.exe with another compatible FFmpeg build.
+
+LICENSE AND SOURCE
+FFmpeg is copyright its respective contributors and is distributed under
+the GNU Lesser General Public License version 2.1 or later. The client
+launches it as a separate process; it does not link against FFmpeg libraries.
+GPL, nonfree, network support, and external codec libraries are disabled.
+
+COPYING.LGPLv2.1 and LICENSE.md contain FFmpeg's license and notices.
+source/ffmpeg-9.0.2.tar.xz contains the complete, unmodified source used
+to build this executable. Its official release signature is alongside it.
+source/Build-CaptureFFmpeg.sh contains the exact configure and build steps.
+buildconf.txt records the executable's version, compiler, and configuration.
+SOURCE-SHA256.txt records the source archive hash.
+
+Official project: https://ffmpeg.org/
+Source: https://ffmpeg.org/releases/ffmpeg-9.0.2.tar.xz
+License details: https://ffmpeg.org/legal.html
+
+BUILD TOOLS
+The build uses w64devkit 2.10.0 x64 (GCC 16.2.0) and NASM 2.16.03.
+Toolchain notices are in the toolchain-notices folder.
+
+w64devkit: https://github.com/skeeto/w64devkit/releases/tag/v2.10.0
+NASM: https://www.nasm.us/pub/nasm/releasebuilds/2.16.03/
+
+To rebuild, unpack the source archive, add w64devkit/bin and NASM to PATH,
+then run source/Build-CaptureFFmpeg.sh with w64devkit's sh.exe from the
+unpacked FFmpeg source directory. The result is ffmpeg.exe.

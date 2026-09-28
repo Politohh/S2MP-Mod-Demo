@@ -1,8 +1,9 @@
-<# Package the current DLL and an existing launcher with numbered release docs. #>
+<# Package the current DLL, launcher, and FFmpeg with numbered release docs. #>
 param(
     [Parameter(Mandatory = $true)][string] $BasePackage,
     [Parameter(Mandatory = $true)][string] $OutputZip,
-    [string] $ModDllPath
+    [string] $ModDllPath,
+    [string] $FFmpegDirectory
 )
 
 $ErrorActionPreference = 'Stop'
@@ -20,6 +21,15 @@ if (Test-Path -LiteralPath $OutputZip) { throw "Output already exists: $OutputZi
 if ($ModDllPath -and -not (Test-Path -LiteralPath $ModDllPath -PathType Leaf)) {
     throw "Mod DLL not found: $ModDllPath"
 }
+$requiredFFmpegFiles = @('ffmpeg.exe', 'FFmpeg/README.txt', 'FFmpeg/COPYING.LGPLv2.1', 'FFmpeg/source/ffmpeg-9.0.2.tar.xz')
+if ($FFmpegDirectory) {
+    $FFmpegDirectory = (Resolve-Path -LiteralPath $FFmpegDirectory).Path
+    foreach ($file in $requiredFFmpegFiles) {
+        if (-not (Test-Path -LiteralPath (Join-Path $FFmpegDirectory $file) -PathType Leaf)) {
+            throw "Missing $file in FFmpeg bundle."
+        }
+    }
+}
 
 Add-Type -AssemblyName System.IO.Compression
 Add-Type -AssemblyName System.IO.Compression.FileSystem
@@ -30,6 +40,11 @@ try {
     foreach ($name in $binaryNames) {
         if ($name -eq 's2mp-mod.dll' -and $ModDllPath) { continue }
         if (-not $source.GetEntry($name)) { throw "Missing $name in base package." }
+    }
+    if (-not $FFmpegDirectory) {
+        foreach ($file in $requiredFFmpegFiles) {
+            if (-not $source.GetEntry($file)) { throw "Supply -FFmpegDirectory: $file is missing from the base package." }
+        }
     }
 
     $output = [IO.Compression.ZipFile]::Open($OutputZip, [IO.Compression.ZipArchiveMode]::Create)
@@ -55,9 +70,27 @@ try {
             finally { $memory.Dispose(); $inputStream.Dispose() }
         }
 
+        if ($FFmpegDirectory) {
+            foreach ($file in (Get-ChildItem -LiteralPath $FFmpegDirectory -Recurse -File | Sort-Object FullName)) {
+                $relative = [IO.Path]::GetRelativePath($FFmpegDirectory, $file.FullName).Replace('\', '/')
+                if ($relative -ne 'ffmpeg.exe' -and -not $relative.StartsWith('FFmpeg/')) { continue }
+                Add-EntryBytes $output $relative ([IO.File]::ReadAllBytes($file.FullName))
+            }
+        }
+        else {
+            foreach ($entry in $source.Entries) {
+                if ($entry.FullName -ne 'ffmpeg.exe' -and -not $entry.FullName.StartsWith('FFmpeg/')) { continue }
+                if (-not $entry.Name) { continue }
+                $inputStream = $entry.Open()
+                $memory = [IO.MemoryStream]::new()
+                try { $inputStream.CopyTo($memory); Add-EntryBytes $output $entry.FullName $memory.ToArray() }
+                finally { $memory.Dispose(); $inputStream.Dispose() }
+            }
+        }
+
         $docs = [ordered]@{
             'INSTALL.txt'         = 'docs/INSTALL.txt'
-            'README.md'           = 'README.md'
+            'README.md'           = 'docs/PACKAGE-README.md'
             'CREDITS.md'          = 'CREDITS.md'
             'RELEASE-NOTES.md'    = "docs/RELEASE-BUILD-$($build.Groups[1].Value).md"
             'RESHADE-SETUP.txt'   = 'docs/RESHADE-SETUP.txt'
