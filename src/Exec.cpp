@@ -6,7 +6,6 @@
 
 #include <sstream>
 #include <unordered_set>
-#include <zlib.h>
 #include <DevDef.h>
 
 namespace {
@@ -76,47 +75,17 @@ namespace {
 		return file.good() || file.eof();
 	}
 
-	bool readRawFileAsset(const std::string& assetName, std::vector<std::uint8_t>& outData) {
-		if (!Functions::_DB_FindXAssetHeader) {
+	bool hasLocalCfgFile(const std::string& rawFilename) {
+		const std::string filename = normalizeCfgFilename(rawFilename);
+		const std::string lower = GameUtil::toLower(filename);
+		// The native handler owns encrypted profiles and control presets.
+		if (filename.empty() || lower == "system_config_mp.cfg"
+			|| lower == "user_config_mp.cfg" || lower.rfind("controls/", 0) == 0) {
 			return false;
 		}
 
-		RawFile* rawFile = Functions::_DB_FindXAssetHeader(ASSET_TYPE_RAWFILE, assetName.c_str(), 0).rawfile;
-		if (!rawFile || !rawFile->buffer) {
-			return false;
-		}
-
-		if (rawFile->len > 0 && rawFile->compressedLen > 0) {
-			outData.resize(static_cast<std::size_t>(rawFile->len));
-
-			z_stream strm{};
-			strm.next_in = reinterpret_cast<Bytef*>(const_cast<char*>(rawFile->buffer));
-			strm.avail_in = static_cast<uInt>(rawFile->compressedLen);
-			strm.next_out = outData.data();
-			strm.avail_out = static_cast<uInt>(outData.size());
-
-			int ret = inflateInit(&strm);
-			if (ret == Z_OK) {
-				ret = inflate(&strm, Z_FINISH);
-				if (ret == Z_STREAM_END || ret == Z_OK) {
-					outData.resize(strm.total_out);
-					inflateEnd(&strm);
-					return true;
-				}
-				inflateEnd(&strm);
-			}
-
-			outData.clear();
-		}
-
-		const int rawSize = rawFile->compressedLen > 0 ? rawFile->compressedLen : rawFile->len;
-		if (rawSize <= 0) {
-			return false;
-		}
-
-		outData.resize(static_cast<std::size_t>(rawSize));
-		std::memcpy(outData.data(), rawFile->buffer, outData.size());
-		return true;
+		std::error_code error;
+		return std::filesystem::is_regular_file(getPlayers2Path() / filename, error);
 	}
 
 	bool executeCfgFile(const std::string& rawFilename);
@@ -147,7 +116,8 @@ namespace {
 			std::vector<std::string> parsedLine = Console::parseCmdToVec(trimmedLine);
 			if (!parsedLine.empty()) {
 				std::string commandName = GameUtil::toLower(parsedLine[0]);
-				if (commandName == "exec" && parsedLine.size() == 2) {
+				if (commandName == "exec" && parsedLine.size() == 2
+					&& hasLocalCfgFile(parsedLine[1])) {
 					executeCfgFile(parsedLine[1]);
 					continue;
 				}
@@ -192,10 +162,8 @@ namespace {
 
 		std::vector<std::uint8_t> cfgData;
 		if (!readBinaryFile(cfgFilePath, cfgData)) {
-			if (!readRawFileAsset(cfgFilename, cfgData)) {
-				Console::printf("Could not open cfg file: %s", cfgFilename.c_str());
-				return false;
-			}
+			Console::printf("Could not open cfg file: %s", cfgFilename.c_str());
+			return false;
 		}
 
 		while (!cfgData.empty() && cfgData.back() == '\0') {
@@ -367,8 +335,6 @@ bool Exec::updateAutoexecDvar(const std::string& dvarName, const std::string& va
 }
 
 void Exec::execCmd() {
-	Functions::_Cmd_Exec_f();
-
 	CmdArgs* cmdArgs = GameUtil::getCmdArgs();
 	if (!cmdArgs) {
 		return;
@@ -378,17 +344,17 @@ void Exec::execCmd() {
 	int count = cmdArgs->argc[nest];
 	const char** args = cmdArgs->argv[nest];
 
-	if (count != 2) {
+	if (count != 2 || !args || !args[1]) {
 		Console::print("exec <filename> : execute a cfg file from players2");
 		return;
 	}
 
-	const char* filename = args[1] ? args[1] : "";
-
-	if (strncmp(filename, "controls/", 9) == 0) {
-		return;
+	const std::string filename = args[1];
+	if (hasLocalCfgFile(filename)) {
+		executeCfgFile(filename);
+	} else {
+		// Built-in match rules must run only through the engine. Executing the
+		// same rawfile again here duplicates its commands and fills the Cbuf.
+		Functions::_Cmd_Exec_f();
 	}
-
-	//DEV_PRINTF("+++EXEC: %s", filename);
-	executeCfgFile(filename);
 }

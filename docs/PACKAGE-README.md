@@ -1,4 +1,4 @@
-# S2MP Mod v1.0.2 (Build 35)
+# S2MP Mod v1.0.3 (Build 36)
 
 ## Install
 

@@ -42,8 +42,9 @@
 //  33  Build 30 rollback with dolly_slow_clock off by default
 //  34  com_maxfps secure-int domain extended to 1000
 //  35  bundled FFmpeg for drag-and-drop ProRes recording
+//  36  prevent duplicate built-in CFG execution; log rejected network-asset tables
 namespace mod_build
 {
-	constexpr int NUMBER = 35;
-	constexpr const char* VERSION = "1.0.2";
+	constexpr int NUMBER = 36;
+	constexpr const char* VERSION = "1.0.3";
 }

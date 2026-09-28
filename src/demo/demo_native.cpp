@@ -52,6 +52,7 @@
 #include "demo/bonecam.hpp"
 
 #include "Console.hpp"
+#include "BuildMap.hpp"
 #include "DvarInterface.hpp"
 #include "demo/demo_library.hpp"
 #include "DevMode.hpp"
@@ -2363,6 +2364,51 @@ namespace demo_native
 		{
 			auto* const table = reinterpret_cast<std::uintptr_t*>(0x59FFC30_b);  // IDA 0x5A00C30
 			return table[2 * static_cast<std::size_t>(type)];
+		}
+
+		// The reported EXE_TRANSMITERROR at RVA 0xDF33F is the failure exit of
+		// NetConstStrings_Load. Its table-adder (RVA 0xDFCD0) returns zero when
+		// a type's strings exceed its configstring range. Record the rejected
+		// table before the loader clears its bookkeeping; never change the result.
+		// Layout and integer return verified in the supplied Build 20 runtime image.
+		using NCS_AddTable_fn = std::int64_t(__fastcall*)(const void*);
+		NCS_AddTable_fn NCS_AddTable_orig = nullptr;
+
+		std::int64_t ncs_add_table_stub(const void* asset)
+		{
+			int type = -1;
+			std::uint32_t entries = 0, used = 0, capacity = 0;
+			const char* name = "<unreadable>";
+			if (readable(asset, 32))
+			{
+				const auto* data = static_cast<const unsigned char*>(asset);
+				name = GameUtil::safeCString(*reinterpret_cast<const char* const*>(data), 128);
+				std::memcpy(&type, data + 8, sizeof(type));
+				std::memcpy(&entries, data + 16, sizeof(entries));
+				if (type >= 0 && type < 26)
+				{
+					// qword_5A00C30: {head, count, padding}, stride 16.
+					const auto* count = reinterpret_cast<const void*>(
+						0x59FFC30_b + static_cast<std::size_t>(type) * 16 + 8);
+					// RVA 0xB2E590: {configstring base, range size}, stride 8.
+					const auto* range = reinterpret_cast<const void*>(
+						0xB2D590_b + static_cast<std::size_t>(type) * 8 + 4);
+					if (readable(count, sizeof(used))) std::memcpy(&used, count, sizeof(used));
+					if (readable(range, sizeof(capacity)))
+					{
+						std::memcpy(&capacity, range, sizeof(capacity));
+						if (capacity) --capacity; // The first entry is reserved.
+					}
+				}
+			}
+
+			const auto result = NCS_AddTable_orig(asset);
+			if (!result)
+			{
+				Console::printf("[match] NCS table rejected: name='%s' type=%d "
+					"entries=%u used=%u capacity=%u", name, type, entries, used, capacity);
+			}
+			return result;
 		}
 
 		bool g_absent_installed = false;
@@ -6257,6 +6303,23 @@ namespace demo_native
 		Hook::create("Com_Error", reinterpret_cast<void*>(addr_Com_Error()),
 			reinterpret_cast<void*>(com_error_stub),
 			reinterpret_cast<void**>(&Com_Error_orig));
+
+		// These diagnostic addresses are verified only for this Steam build.
+		if (build_map::current() == build_map::Build::Steam)
+		{
+			constexpr unsigned char expected[] = {
+				0x40, 0x57, 0x48, 0x83, 0xEC, 0x20, 0x83, 0x79, 0x10, 0x00,
+				0x48, 0x8B, 0xF9
+			};
+			const auto target = reinterpret_cast<void*>(0xDECD0_b);
+			const bool matches = readable(target, sizeof(expected))
+				&& std::memcmp(target, expected, sizeof(expected)) == 0;
+			const bool hooked = matches && Hook::create("NetConstStrings_AddTable",
+				target, reinterpret_cast<void*>(ncs_add_table_stub),
+				reinterpret_cast<void**>(&NCS_AddTable_orig));
+			Console::printf("[match] network-asset failure diagnostics: %s",
+				(hooked && NCS_AddTable_orig) ? "OK" : "unavailable (code differs or hook failed)");
+		}
 
 		// DB_LoadLevelXAssets @ IDA 0xA4840 - 0x1000 = 0xA3840. Hooked for BOTH
 		// live map loads and demo playback (CL_Demo_Play_f and the ordinary

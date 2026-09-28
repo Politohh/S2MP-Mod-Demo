@@ -1,4 +1,4 @@
-S2MP Mod v1.0.2 - Build 35
+S2MP Mod v1.0.3 - Build 36
 
 This is an unofficial continuation of josh155/S2MP-Mod demo-w2dr,
 originally forked from Rattpak/S2MP-Mod. See CREDITS.md.
