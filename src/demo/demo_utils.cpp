@@ -65,9 +65,9 @@ namespace demo_utils
 			// ⭐ WHAT THIS BLOCK ACTUALLY IS -- established 2026-08-17.
 			//
 			// These were written as generic "message event" functions. They are not.
-			// They are the NATIVE DEMO RECORDER's per-message append chain -- the
-			// appender CLAUDE.md long recorded as "never located". sub_99960 (the live
-			// receive loop) calls exactly this sequence after CL_ParseServerMessage:
+			// They are the NATIVE DEMO RECORDER's per-message append chain.
+			// The live receive loop, sub_99960, calls exactly this sequence after
+			// CL_ParseServerMessage:
 			//     sub_910440, sub_91C6C0, sub_91CFA0, sub_91D2A0, sub_91CEC0
 			// and this function replicates it faithfully. So replaying a .dm_s2 through
 			// the theater ALSO writes a native .demo, using the engine's own header and

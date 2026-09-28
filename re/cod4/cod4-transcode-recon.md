@@ -759,7 +759,7 @@ HUFFMAN IS STATIC, NOT ADAPTIVE — this is the key tractability fact.
   the stream is terminated by svc_EOF, not by length. Decoders must tolerate/ignore the tail.
   I REPRODUCED THE TREE EXACTLY in Python using a plain stable sort for the two qsort calls, and it decoded
   every block correctly => the qsort tie-breaking does NOT matter in practice. (Scratch impl:
-  C:/Users/joshu/AppData/Local/Temp/claude/c--Users-joshu-OneDrive-Documents-GitHub-S2MP-Mod/48831099-a893-43a6-bfac-6811679bd08e/scratchpad/huff.py)
+  huff.py)
 
 === 4. THE svc GRAMMAR (verified by decoding all 1,440 packets) ===
 svc_ops_e (client_mp/client_mp.h:86-96): nop=0, gamestate=1, configstring=2, baseline=3, serverCommand=4,

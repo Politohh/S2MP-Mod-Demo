@@ -8,8 +8,8 @@ Answers, without launching the game:
      in a NetConstStrings range (where they do not belong)?
   3. Does the demo carry a StreamSync load request (server-command opcode 98)?
 
-Question 3 is the one that decides the viewmodel investigation. See CLAUDE.md,
-"LOCATED IN S2 — StreamSync load request = sub_193B20".
+Question 3 checks for the StreamSync load request handled by sub_193B20,
+which determines the next step in the viewmodel investigation.
 
 Usage:
     python tools/dm_s2_scan.py <demo.dm_s2> [--strings] [--max-strings N]

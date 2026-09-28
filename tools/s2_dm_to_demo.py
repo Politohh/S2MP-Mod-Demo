@@ -107,7 +107,7 @@ def to_payload(tlv_payload, fallback_seq):
     demo payload gets one long carrying seq + zlib, and both live longs are stripped.
 
     The .dm_s2's own stored seq field is NOT usable: pack_network fills it via
-    demo_game::clc_for(0), which CLAUDE.md proves reads the wrong global (0x1BD3C00
+    demo_game::clc_for(0), which disassembly shows reads the wrong global (0x1BD3C00
     instead of 0x1BD3D00). Measured: it is 0 in every record.
     """
     if len(tlv_payload) < 8:

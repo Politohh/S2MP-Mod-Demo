@@ -331,7 +331,7 @@ namespace demo_recording
 			// carries the svc_gamestate without the 2-byte length prefix that
 			// CL_ParseServerMessage unconditionally reads; the engine then decodes
 			// zero bytes and silently loses the gamestate. Repair it in place so
-			// the engine's own parser handles it. See CLAUDE.md for the proof.
+			// the engine's own parser handles it.
 			demo_native::repair_gamestate_message(msg);
 
 			CL_ParseServerMessage_orig(client_num, msg);

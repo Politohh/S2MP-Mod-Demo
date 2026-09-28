@@ -1,6 +1,6 @@
 """Score MWR-PS4 -> MWR-PC anchor matches into applicable name proposals.
 
-Rules enforced (see .claude/skills/ida-naming/SKILL.md):
+Matching rules:
   * anchor must be unambiguous on BOTH sides (1 PS4 owner by construction,
     1 PC owner here)
   * all anchors backing a PC function must agree on the PS4 name (unanimous)

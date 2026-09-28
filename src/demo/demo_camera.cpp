@@ -570,12 +570,10 @@ namespace demo_camera
 	// ---------------------------------------------------------------------
 	//  ROLL, SECOND ATTEMPT — fed on the USERCMD side, before the mover
 	// ---------------------------------------------------------------------
-	// ⛔ THE ORIGINAL APPROACH (apply_after_camera_move, below) WAS AN
-	// INFERENCE AND THE USER HAS NOW DISPROVEN IT. CLAUDE.md's "ROLL IS
-	// PLUMBED AND SIMPLY NEVER FED" reasoned that because both movers write
-	// cg+2355668 from usercmd angle[2], writing that field after the mover
-	// would give a dutch angle. It shipped labelled "NOT run in game -- a
-	// CANDIDATE". Reported 2026-09-21: it does nothing.
+	// The original approach (apply_after_camera_move, below) assumed that
+	// writing cg+2355668 after the mover would rotate the camera, because
+	// both movers write that field from usercmd angle[2]. In-game testing
+	// on 2026-09-21 showed that this write alone has no visible effect.
 	//
 	// WHAT THE RECORD ALREADY SAYS, and what the old fix contradicted.
 	// theater_camera::seed_freecam_from_current_view has carried this note
@@ -660,7 +658,7 @@ namespace demo_camera
 			// g_roll_pre is what the ENGINE'S OWN MOVER left here, read before we
 			// touch it. If the mover really derived roll from the usercmd, this
 			// would already equal g_roll -- the log says it is 0, which is what
-			// disproves the "plumbed, just never fed" theory in CLAUDE.md.
+			// disproves the "plumbed, just never fed" theory.
 			g_roll_pre.store(*roll_field, std::memory_order_relaxed);
 			*roll_field = g_roll;
 			g_roll_post.store(*roll_field, std::memory_order_relaxed);

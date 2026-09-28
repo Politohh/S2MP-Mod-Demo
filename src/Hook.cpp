@@ -113,7 +113,7 @@ bool Hook::create(const char* name, void* target, void* detour, void** original)
 
 	MH_STATUS status = MH_CreateHook(target, detour, original);
 
-	// ⭐ A DUPLICATE HOOK IS A FAILURE, AND IT MUST BE LOUD (CLAUDE.md RULE A3.1).
+	// ⭐ A DUPLICATE HOOK IS A FAILURE, AND IT MUST BE LOUD.
 	//
 	// This used to treat MH_ERROR_ALREADY_CREATED as success. It is not: when
 	// another hook already owns the target, MinHook creates no trampoline, does
@@ -129,7 +129,7 @@ bool Hook::create(const char* name, void* target, void* detour, void** original)
 		*original = nullptr;   // never leave the caller a stale/garbage trampoline
 		Console::printf("[hook] DUPLICATE: \"%s\" at %p is ALREADY HOOKED by another "
 			"module. This detour will NEVER RUN. Extend the existing stub instead "
-			"of installing a second hook (CLAUDE.md RULE A3.1).", safeName, target);
+			"of installing a second hook.", safeName, target);
 		return false;
 	}
 

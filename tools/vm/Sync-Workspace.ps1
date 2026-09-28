@@ -12,7 +12,7 @@
       repo    the source tree. Git protects the history, but the working branch is
               deliberately not pushed anywhere, so the only copy is on disk.
       IDB     s2x_dump.exe.i64 -- months of function naming. If this is lost, every
-              address in CLAUDE.md has to be re-derived. It is the single most
+              previously mapped address has to be re-derived. It is the single most
               valuable file in the project.
       demos   main/demo/*.demo and demos/*.dm_s2. A recording cannot be regenerated
               without replaying the same match, and public-match recordings in
@@ -20,8 +20,7 @@
       logs    main/s2mp_console.log -- the measurements the findings rest on.
       config  s2mp_bans.txt and s2mp-mod.cfg.
 
-    ⚠ IDB SAFETY (this is RULE A10 in CLAUDE.md, and it has already cost this project
-    two days of naming once). IDA keeps the OPEN database unpacked in loose
+    ⚠ IDB SAFETY: IDA keeps the OPEN database unpacked in loose
     .id0/.id1/.id2/.nam/.til files and only repacks them into the .i64 on a CLEAN
     CLOSE. A hard kill, a crash or a reboot leaves the .i64 STALE. This script checks
     the loose files' timestamps against the .i64 and refuses to present a stale .i64

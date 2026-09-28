@@ -17,7 +17,7 @@
  *     - +36..+72 is TEN consecutive dword accesses = AW's buttonPressTime[10],
  *       which lands the head at exactly 76 = AW's persistentDataBuffer offset.
  *
- *   Six of these were already derived by hand in CLAUDE.md and all six were
+ *   Six of these were already derived by hand, and all six were
  *   right: completed@8, overridePause@10, jumpTimeFlag@12, totalBytesRead@24,
  *   timeScale@28, and the byte at +32 that CL_Demo_HandleAction 16/167 toggles --
  *   which AW names hideDemoHud.
@@ -39,7 +39,7 @@
  *
  *   So to name any S2 offset in this region: subtract 64000 and read AW's field.
  *
- * ⭐ THIS REFRAMES CLAUDE.md's "Finding 7"
+ * ⭐ THIS REFRAMES the earlier clip-buffer finding
  *   That entry records "a 2 MB in-memory demo buffer with a second reader" at
  *   +3336316, fill level at +5433468, and treats it as a general demo read buffer.
  *   It is AW's **clipRecordBuf** / **clipRecordBufIndex** -- the CLIP RECORDING
@@ -52,7 +52,7 @@
  *   consistent with "1 = clip capture" but explains why the numbering looked odd.
  *
  * ⚠ NOT ESTABLISHED: total size. The +64000 shift does NOT hold all the way down --
- *   CLAUDE.md's camera mode at +6297228 and block count at +6096400 do not land on
+ *   the measured camera mode at +6297228 and block count at +6096400 do not land on
  *   AW fields at that shift, so there are further insertions deeper in. Do not
  *   extrapolate past the table above without checking.
  * =========================================================================== */

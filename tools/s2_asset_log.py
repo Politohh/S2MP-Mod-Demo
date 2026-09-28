@@ -14,15 +14,14 @@ left, and the exact point the 40192 'image' pool overflowed.
 WHY THIS EXISTS
     The image limit was previously chased with live runs. Everything needed to
     account for it is already in these two artefacts, so the analysis belongs
-    offline (CLAUDE.md RULE A11: if a cheap offline test can answer it, run that
-    first).
+    offline rather than requiring another live run.
 
 USAGE
     python tools/s2_asset_log.py <console.log> [more.log ...]
     python tools/s2_asset_log.py --diff BASE.txt OTHER.txt
     python tools/s2_asset_log.py <console.log> --diff BASE.txt OTHER.txt
 
-FACTS BAKED IN (proven, see CLAUDE.md)
+FACTS BAKED IN (measured)
     image asset type = 21, pool = 40192 (also the per-tier stride of the
     residency bitmap at IDA 0x79DB100).
 """

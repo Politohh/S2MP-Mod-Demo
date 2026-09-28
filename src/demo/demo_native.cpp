@@ -103,8 +103,7 @@ namespace demo_native
 
 		// Com_Error @ IDA 0x90750. Variadic: Com_Error(int code, const char* fmt, ...).
 		// S2 replaces most Q3 error strings with numeric ids ("439", "440", "428",
-		// "430", "460", "461"), so the message is usually a short number â€” the
-		// decoded meanings live in CLAUDE.md.
+		// "430", "460", "461"), so the message is usually a short number.
 		[[nodiscard]] std::uintptr_t addr_Com_Error() { return 0x8F750_b; }
 
 		using Com_Error_fn = void(*)(int, const char*, ...);
@@ -757,7 +756,7 @@ namespace demo_native
 				reinterpret_cast<AIR_fn>(demo_game::addr_XModel_AreImagesResident())(vm));
 		}
 
-		// Population of a tier-0 image bitmap. PROVEN layout (CLAUDE.md): the space
+		// Population of a tier-0 image bitmap. PROVEN layout: the space
 		// is 4 tiers of 40192 bits, tier 0 first.
 		//   residency IDA 0x79DB100 - 0x1000 = 0x79DA100   (the bit `hide` tests)
 		//   requests  IDA 0x1506700 - 0x1000 = 0x1505700   (what XModel_Stream* ORs
@@ -2277,9 +2276,8 @@ namespace demo_native
 		// an S2 regression. The engine's OTHER feed loop (0x87011) does it right â€”
 		// it checks IsCompleted and the return value every iteration.
 		//
-		// This guard makes the priming loop honour what the engine already knows,
-		// WITHOUT touching any MSG_ read position (see CLAUDE.md: cursor nudging is
-		// the symptom patch we are explicitly not repeating).
+		// This guard makes the priming loop honour what the engine already knows
+		// without changing any MSG_ read position.
 		constexpr std::size_t CONNSTATE_STRIDE = 494 * 4; // int array, [494 * client]
 
 		[[nodiscard]] int* connstate_ptr(const int client)
@@ -2799,9 +2797,7 @@ namespace demo_native
 		// =====================================================================
 		//  sub_91C710 IS CL_Demo_StartRecord -- AND IT RUNS ON LIVE CONNECTS
 		// =====================================================================
-		// CLAUDE.md recorded for weeks that "S2 has NO separate CL_Demo_StartRecord;
-		// the only caller of CL_Demo_WriteGameState is the clip path". That is WRONG
-		// and is corrected here. sub_91C710 @0x91C710:
+		// sub_91C710 @0x91C710 is a separate native recording entry point:
 		//
 		//   * is called from CL_InitCGame @0x7BFD0 and sub_70830 -- the LIVE connect
 		//     path, not playback;
@@ -3090,7 +3086,7 @@ namespace demo_native
 		// and its valid index range, neither of which is established. An earlier
 		// attempt gated on netconststrings_block_list(21) -- a DIFFERENT table, which
 		// is populated live -- so it never fired and would not have helped. Three
-		// separate storages are involved; see CLAUDE.md. Splicing the finished file
+		// separate storages are involved. Splicing the finished file
 		// is byte-identical to the repair that is verified working, so it is what
 		// ships until the registration path is properly understood.
 		//
@@ -3499,7 +3495,7 @@ namespace demo_native
 		// Both commands could therefore crash the game, which matches the report.
 		//
 		// FIX: a lock-free atomic BITMASK. Every measured id is 1..104 (73 distinct,
-		// max 104 -- see the id table in CLAUDE.md), so two uint64_t cover 0..127
+		// max 104), so two uint64_t cover 0..127
 		// exactly. The hook now does one relaxed atomic load and a bit test: no
 		// allocation, no iteration, no shared container, and materially faster on a
 		// path that runs 70x/frame. Writers compose a value and store it.
@@ -3561,7 +3557,7 @@ namespace demo_native
 		// which is why every previous attempt left something on screen.
 		//
 		// Why this leaves obituaries / score popups / hitmarkers alone (the mapping
-		// is from the MWR PS4 named build, recorded in CLAUDE.md):
+		// is from the MWR PS4 named build):
 		//     hitmarkers   NATIVE, in the crosshair path -- not a LUI model at all
 		//     killfeed     LUI, but EVENT-driven (LUI_Obituary), not model-driven
 		//     score popup  LUI, EVENT-driven
@@ -4670,7 +4666,7 @@ namespace demo_native
 	// own camera and view code run on.
 	//
 	// Using the snapshot clock for the dolly made the camera jump once per
-	// snapshot instead of moving — exactly the defect CLAUDE.md records for view
+	// snapshot instead of moving — exactly the earlier defect in view
 	// angles, where writing one discrete sample per frame replaced the engine's
 	// smooth interpolation. Same mistake, different subsystem.
 	int demo_time_smooth()
@@ -5036,7 +5032,7 @@ namespace demo_native
 	//
 	//  This loop is the NORMAL-play one at 0x87011, which re-checks
 	//  CL_Demo_IsCompleted and the return value every iteration — NOT the
-	//  priming loop at 0x86D97 that caused the runaway documented in CLAUDE.md.
+	//  priming loop at 0x86D97 that caused the runaway.
 	//  So it terminates correctly at end of stream.
 	//
 	//      cls_realtime  IDA 0x1C7E1F0 - 0x1000 = 0x1C7D1F0
@@ -6071,8 +6067,8 @@ namespace demo_native
 		// Suppress reads ONLY after the engine itself returned 0 (its own
 		// end-of-stream signal). Deliberately NOT gated on CL_Demo_IsCompleted /
 		// playbackData+8: that byte is never initialised on this path, and gating
-		// on it regressed airshipdemo into a permanent loading screen (CLAUDE.md
-		// RULE A7). This latch cannot be set by stale memory â€” only by a real 0
+		// on it regressed airshipdemo into a permanent loading screen.
+		// This latch cannot be set by stale memory â€” only by a real 0
 		// return recorded in note_read_result().
 		if (g_eof_seen)
 		{
@@ -6409,7 +6405,7 @@ namespace demo_native
 		// hitmarkers among everything else. There is no partial setting: turning it
 		// off takes the hitmarkers, the killfeed and the score popups with it, which
 		// is exactly what was observed the last time it was tried. It is the wrong
-		// lever for this, and PROVEN so -- see CLAUDE.md.
+		// lever for this, and PROVEN so.
 		// =====================================================================
 		//  ⭐⭐ REGISTER THE HUD-HIDE DVARS THE SHIPPED LUI ALREADY READS
 		//
@@ -7197,7 +7193,7 @@ namespace demo_native
 		// while MinHook leaves `original` null, so the second detour is silently
 		// discarded. That is exactly what happened on 2026-08-08 and it cost a full
 		// test cycle. The theater's stub calls intercept_read/note_read_result on
-		// its native-playback path instead. See CLAUDE.md RULE A3.
+		// its native-playback path instead.
 
 		Console::printf("[native] %zu engine demo(s) in main/demo; Com_Error watch armed",
 			g_files.size());

@@ -11,7 +11,7 @@ is a field access, and the SET of offsets touched is the used layout.
                                                                  # (= playerState,
                                                                  #  which sits at cg+0)
 
-TRANSPORT CONSTRAINTS (both learned the hard way, see CLAUDE.md RULE A24)
+TRANSPORT CONSTRAINTS
     - the MCP plugin enforces a hard 60 s internal timeout -> batch;
     - replies truncate past ~60 KB -> run the regex INSIDE IDA and return counts
       only, never pseudocode.

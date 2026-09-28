@@ -4,7 +4,7 @@
 no puppeting — MWR's own `CL_ParseSnapshot` / `CG_*` consume the data and it looks
 normal.
 
-Evidence tiers per `.claude/skills/ida-naming/SKILL.md`. Nothing here is inferred
+Evidence is labeled by confidence. Nothing here is inferred
 from the other engine unless it says so.
 
 ## Reference builds

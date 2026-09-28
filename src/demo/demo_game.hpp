@@ -483,7 +483,7 @@ namespace demo_game
 	// The AW->S2 offset shift is +8 immediately below it and +12 immediately above,
 	// and the shift is monotonic (insertions only), so exactly one 4-byte field is
 	// inserted here. That is why it could never be identified by analogy, and it is
-	// the field CLAUDE.md's doctrine records the old implementation corrupting.
+	// the field the old implementation corrupted.
 	// Its MEANING IS UNKNOWN. Never write it. The old name
 	// (CLC_LAST_SNAPSHOT_SERVER_TIME) was an invented guess and is retired.
 	constexpr std::size_t CLC_S2_ONLY_0x20140 = 0x20140;

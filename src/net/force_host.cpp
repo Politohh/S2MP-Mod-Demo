@@ -684,7 +684,7 @@ namespace force_host
 		//
 		//  Corroborated independently: CL_Demo_StartRecord writes
 		//  sub_789870(client) into the demo header at +0x10, which is the field
-		//  that differs between the private demos and publicmatch (CLAUDE.md).
+		//  that differs between the private demos and publicmatch.
 		//
 		//  RULE A1:  unk_D8ACED8  IDA 0xD8ACED8 - 0x1000 = 0xD8ABED8
 		// -------------------------------------------------------------------

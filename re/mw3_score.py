@@ -1,6 +1,6 @@
 """Score MW3-Mac -> MW3-Steam string-anchor matches into name proposals.
 
-Rules enforced (.claude/skills/ida-naming/SKILL.md):
+Matching rules:
   * anchor unambiguous on BOTH sides
   * unanimous vote per target function
   * one name, one function - a name claimed by 2+ targets is dropped, UNLESS one

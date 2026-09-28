@@ -6,7 +6,7 @@
 //  Nothing here touches the custom path; it only drives the engine's native
 //  cl_demo_play and watches Com_Error.
 //
-//  Native demo facts established 2026-08-08 (see CLAUDE.md for the evidence):
+//  Native demo facts established 2026-08-08:
 //    - CL_Demo_Play_f is wrapped in `if (!com_sv_running)`. With a server up it
 //      does NOTHING and prints NOTHING, so we check and report that ourselves.
 //    - The engine appends ".demo" and prefixes "demo/", so we pass the stem.
@@ -86,8 +86,7 @@ namespace demo_native
 	// theater (demo_playback.cpp, cl_demo_read_message_stub). A second
 	// Hook::create on the same target returns MH_ERROR_ALREADY_CREATED, which
 	// Hook::create treats as success while MinHook leaves `original` null — so
-	// the duplicate detour is silently discarded and never runs. That cost a
-	// whole test cycle on 2026-08-08; see CLAUDE.md RULE A3.
+	// the duplicate detour is silently discarded and never runs.
 	//
 	// So instead of hooking again, the theater's existing stub calls these two
 	// on the native-playback path (theater not armed). Purely additive.

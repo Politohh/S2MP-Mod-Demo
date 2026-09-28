@@ -1,6 +1,6 @@
 """Match PC binding tables to PS4 binding tables, then entries within a pair.
 
-Per .claude/skills/ida-naming/SKILL.md: match TABLES to TABLES first (by shared
+Match TABLES to TABLES first (by shared
 binding-name set), and only then match entries inside a corresponding pair. A
 bare binding name matched across binaries is careless - 'IsEnabled', 'GetTime',
 'show' live in many different tables.

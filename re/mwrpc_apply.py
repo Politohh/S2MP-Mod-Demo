@@ -1,7 +1,7 @@
 """RUNS INSIDE IDA (MWR-PC). Apply anchor-derived names with basis comments.
 
-Every name carries a comment stating how it was derived (the one hard rule in
-.claude/skills/ida-naming/SKILL.md). Nothing is applied over an existing name.
+Every name carries a comment stating how it was derived.
+Nothing is applied over an existing name.
 """
 import json, os
 

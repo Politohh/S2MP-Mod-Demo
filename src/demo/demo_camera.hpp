@@ -6,8 +6,8 @@
 //  DEMO CAMERA — framing controls for filming
 // =====================================================================
 //
-// Everything here was recovered from the S2 IDB on 2026-08-31 (see
-// CLAUDE.md). Three of the four need no code patching at all; the fourth
+// Recovered from the S2 IDB on 2026-08-31.
+// Three of the four need no code patching at all; the fourth
 // repoints two single instructions using the same technique already
 // proven for the free-camera speed.
 //

@@ -4,11 +4,11 @@
     idb   C:\\Users\\joshu\\OneDrive\\Documents\\s2x_dump.exe (1).i64
     input F:\\SteamLibrary\\...\\Call of Duty WWII\\s2x_dump.exe
 
-while CLAUDE.md RULE A10 names
+The project's authoritative database is
     E:\\SteamLibrary\\steamapps\\common\\Call of Duty WWII\\s2x_dump.exe.i64
-as authoritative.  Reading it is fine -- the binary is the same and RULE A2
-passes (0xBCE9E0 == "EXE_ERR_PROCESS_DEMO_FILE_FAILED", so IDA addresses match
-CLAUDE.md with no shift).  But any NAME applied here does not reach the E: copy.
+Reading the served database is fine: the binary is the same, and the string
+at 0xBCE9E0 is "EXE_ERR_PROCESS_DEMO_FILE_FAILED", confirming the expected
+address layout. Names applied here do not reach the E: copy.
 
 Address convention, unchanged:  _b literal = IDA - 0x1000.
 """

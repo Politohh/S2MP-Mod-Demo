@@ -4,7 +4,7 @@ s2_capture_diff.py -- why does the engine's own recorder produce online demos th
 raise Com_Error "4780", when the SAME online data captured by our theater replays
 fine?
 
-THE ELIMINATION SO FAR (all measured, see CLAUDE.md)
+THE ELIMINATION SO FAR (measured)
 ---------------------------------------------------
     public match, captured at CL_ParseServerMessage entry, transcoded  -> PLAYS
     public match, captured by CL_Demo_StartRecord's recorder           -> 4780

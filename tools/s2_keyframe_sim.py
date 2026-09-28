@@ -8,7 +8,7 @@ WHY THIS EXISTS
         usable_slots()        (OURS) picks which slots are valid seek targets
         ProcessKeyFrameJump   reads the payload back and replays messages
     All three are pure bookkeeping over a ring buffer and a 250-entry slot table,
-    so they can be simulated exactly, with no game. CLAUDE.md RULE A11.
+    so they can be simulated exactly, with no game.
 
 MODEL SOURCE -- every constant below is read off the S2 decompile, not guessed.
 

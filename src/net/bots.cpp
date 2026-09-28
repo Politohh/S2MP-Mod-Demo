@@ -773,7 +773,7 @@ namespace bots
 				// Should be impossible: SV_AddBot sets this field itself. Say so
 				// loudly rather than carrying on quietly.
 				Console::printf("[bots] WARNING bot #%zu named \"%s\" but isBot read "
-					"%d (expected %d) -- tell Claude, the safety assumption may have "
+					"%d (expected %d) -- report this log; the safety assumption may have "
 					"changed.", n, pick.c_str(), isbot, ISBOT_VALUE);
 			}
 			return ent;

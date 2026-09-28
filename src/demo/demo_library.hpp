@@ -11,7 +11,7 @@
 //
 // The engine names its recordings `x0147_6a77b6ea.demo`, which tells the
 // user nothing. Everything needed to do better is inside the file, and the
-// format is fully proven (see CLAUDE.md, "NATIVE DEMO FORMAT"):
+// format is fully proven:
 //
 //   header  +0x00 u32 version    == 29
 //           +0x04 u32 headerSize == 79384, which is ALSO the body offset

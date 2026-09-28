@@ -36,7 +36,7 @@
  *   It inspects its own RETURN ADDRESS (Arxan). Called from outside the game
  *   image it does not return what a game-side caller gets -- this is what made
  *   the origin read yield inf/3.9e17 and got `player_box.cpp` wrongly written off
- *   (the OFFSET was always right; the POINTER was not). See CLAUDE.md RULE A22.
+ *   (the OFFSET was always right; the POINTER was not).
  *   And you cannot just reproduce the arithmetic either: qword_8B0DB18 is
  *   ENCRYPTED (reads as 0xF5A16DA2226E8E90 live).
  * =========================================================================== */

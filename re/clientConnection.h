@@ -25,7 +25,7 @@
  *   number. A layout that were wrong anywhere in the middle would not land on it.
  *
  * ⭐ VALIDATION AGAINST THE PROJECT'S OWN HAND-DERIVED OFFSETS
- *   17 of 17 offsets CLAUDE.md had proved by hand over months were recovered
+ *   17 of 17 offsets previously measured by hand were recovered
  *   independently by the extractor, including all four heavily-used ones:
  *       +312     reliableAcknowledge      25 hits
  *       +131396  serverCommandSequence    18 hits
@@ -45,7 +45,7 @@
  * ⭐⭐⭐ THE HEADLINE FINDING: +0x20140 IS AN S2-ONLY FIELD
  * ===========================================================================
  *
- * CLAUDE.md's doctrine opens with a state-ownership failure it never explained:
+ * An earlier investigation recorded this state-ownership failure:
  *
  *     "Our previous implementation wrote a recorded sequence into clc + 0x20140.
  *      IDA subsequently demonstrated that 0x20140 was not the field we had
@@ -74,7 +74,7 @@
  * MEANING is still unknown. Left named s2_only_0x20140 rather than guessed.
  *
  * ===========================================================================
- * ⛔ CORRECTED: CLAUDE.md's two notes about +312 / +131388 contradicted
+ * ⛔ CORRECTED: conflicting notes about +312 / +131388
  * ===========================================================================
  *
  *   the doctrine says   incoming message sequence -> 0x2013C (131388)
@@ -91,7 +91,7 @@
  *       clc.reliableAcknowledge = MSG_ReadLong(msg);
  *       if (clc.reliableAcknowledge < clc.reliableSequence - MAX_RELIABLE_COMMANDS)
  *           clc.reliableAcknowledge = clc.reliableSequence;
- *   -- and CLAUDE.md's own decode of that gate uses the literal 128, which IS
+ *   -- and the earlier decode of that gate uses the literal 128, which IS
  *   MAX_RELIABLE_COMMANDS. So +312 is reliableAcknowledge and +308 is
  *   reliableSequence, both "reliable sequences" as the doctrine said.
  *
@@ -206,7 +206,7 @@ struct clientConnection_t
        (@0x91C6E0, sole caller CL_ParseSnapshot) CLEARS it on the first snapshot and
        stashes a value into demoFooterBody+8. The per-message append proceeds only when
        it reads 0 -- so it means "recording armed, still waiting for a snapshot to
-       anchor to", not "recording". The old name came from a CLAUDE.md annotation
+       anchor to", not "recording". The old name came from an earlier annotation
        rather than from code, which is exactly what the Absolute Rule forbids. */
     /* +346132 */ std::int32_t demoRecordPendingFirstSnapshot;
     /* +346136 */ std::int64_t demoRecordMessageState;    /* the state pointer the append

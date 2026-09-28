@@ -15,8 +15,7 @@ bool Logfile::enabled = false;
 // WHERE THE LOG GOES, per build.
 //
 // Steam: "main/s2mp_console.log", relative to the working directory, EXACTLY as
-// before. That path is baked into how probe output is retrieved from this project
-// (CLAUDE.md refers to main/s2mp_console.log throughout), so it must not move.
+// before. That path is used when retrieving probe output; keep it stable.
 //
 // Store: the game lives in C:\Program Files\WindowsApps, which is not writable,
 // and the working directory of a packaged app is not somewhere we should be

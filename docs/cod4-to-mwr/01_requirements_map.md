@@ -34,7 +34,7 @@ consequence of this list.
              sprintState.sprintDelay(94, 1)
              legsAnim(11) / torsoAnim(28)  reflect the sprint pose
 
-⚠ **pm_flags bits SHIFT between engines.** CLAUDE.md records: bits 0-11 identical
+⚠ **pm_flags bits SHIFT between engines.** Bits 0-11 are identical
 (PRONE=1, DUCKED=2 ... FROZEN=0x800); MWR dropped `NO_PRONE` from bit12, so CoD4
 bits 13-19 shift DOWN one — **SPRINTING 0x8000 -> 0x4000**, JUMPING 0x4000 ->
 0x2000, LADDER_FALL 0x2000 -> 0x1000. Conversion:
@@ -101,8 +101,8 @@ MWR sink: same names. `MSG_ReadAngle16`'s scale is **byte-identical** in both
 binaries (0.0054931640625 = 360/65536) — proven by reading the constant in each.
 Straight copy, same units.
 
-⚠ Do NOT confuse the two. CLAUDE.md records a multi-week error where `ps+0x12C`
-was mislabelled `delta_angles` when it is `viewangles`. And the pinned-view bug
+⚠ Do NOT confuse the two. An earlier analysis mislabeled `ps+0x12C` as
+`delta_angles`; it is `viewangles`. And the pinned-view bug
 was `ps+0x4C` (commandTime) going stale — any synthesized ps must be
 self-consistent with its own serverTime.
 
@@ -300,7 +300,7 @@ all ride the event channel.
 
 CoD4 `clientStateFields[24]` -> MWR `ClientState` (56 fields). This is the
 packet-clients section that `CG_SetNextSnap` reads to build `clientinfo` — i.e.
-**player NAMES, team, and model index**. CLAUDE.md's long "no gun + no body"
+**player NAMES, team, and model index**. The earlier "no gun + no body"
 investigation bottomed out here: ci is rebuilt each snapshot from the snapshot's
 client state, not from configstrings.
 
@@ -377,7 +377,7 @@ MWR's EV_ enum is now the highest-value remaining unknown for this list.
 
 `CG_DeployServerCommandString` references **`mp/splashTable.csv`**. MWR's score
 popups are the "splash" system (medal/points popups) driven from that table.
-CLAUDE.md records the S2 equivalent in detail (`SplashesWidget`,
+S2 uses the equivalent system (`SplashesWidget`,
 `ui_player_splash_id_<n>` / `ui_player_splash_param_<n>` omnvars), and MWR is the
 same family one generation earlier.
 
@@ -717,8 +717,8 @@ sends a model INDEX and the client resolves it through configstrings.
          -> [NAME->NAME table]  ->  MWR model name
          -> MWR modelindex, resolved against CL_GetConfigString(idx + 1240)
 
-⚠ The two config bases differ: **CoD4 CS_MODELS = 830, MWR model base = 1240**
-(both already proven in CLAUDE.md). The index is meaningless across engines - only
+⚠ The two config bases differ: **CoD4 CS_MODELS = 830, MWR model base = 1240**.
+The index is meaningless across engines - only
 the NAME transfers, exactly like weapons and anims.
 
 ⚠ Faction+class is therefore a **content mapping table**, not logic: enumerate the

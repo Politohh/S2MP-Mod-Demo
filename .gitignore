@@ -378,3 +378,14 @@ FodyWeavers.xsd
 /xsk-gsc-s2.vcxproj
 /src/s2mp_con.pdn
 /src/s2mp_con.png
+
+# Local assistant configuration, notes, and research backups
+/.claude/
+/.mcp.json
+/CLAUDE.md
+/CLAUDE.md.bak
+/docs/CLAUDE.*.md
+/tools/Archive-S2.ps1
+/re/s2_named_dump.json
+/src.rar
+/re.rar

@@ -82,8 +82,7 @@ worries you, use Option 1 instead.
 
 Lower effort, lower assurance: never run an anticheated game and these tools in the
 same boot, and do not install Cheat Engine's kernel driver (DBK). CE without the driver
-is enough for everything this project has needed — every CE use in CLAUDE.md is a
-direct read at a computed address.
+supports the direct memory reads used by this project.
 
 This reduces risk. It does not remove it, because artefacts persist on disk.
 

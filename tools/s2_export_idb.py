@@ -15,7 +15,7 @@ WHAT IT EXPORTS, and why only this
               than by walking every instruction -- O(functions x refs) instead of
               O(instructions), which matters on a 300 MB image.
 
-⚠ DELIBERATELY NOT idautils.Strings(). CLAUDE.md records that it forces a full
+⚠ DELIBERATELY NOT idautils.Strings(). It forces a full
 strlist rebuild and TIMES OUT the MCP on this binary. Twice. String anchors, if
 ever needed, come from reading .rdata bytes and searching them in Python.
 

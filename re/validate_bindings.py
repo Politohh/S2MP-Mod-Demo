@@ -10,7 +10,7 @@ WHY THIS EXISTS
     under a Lua namespace" -- is a claim, and it deserves an independent source.
 
     The 941 dumped LUI files are that source. They are HKS BYTECODE, not text, so
-    grep finds nothing (CLAUDE.md records this). Their constant tables, however,
+    grep finds nothing. Their constant tables, however,
     hold every identifier the script references as plain NUL-terminated ASCII.
     If `CanHostServer` appears there, the name is corroborated by an artifact that
     has nothing to do with the .rdata scrape.
