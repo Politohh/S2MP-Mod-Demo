@@ -43,8 +43,9 @@
 //  34  com_maxfps secure-int domain extended to 1000
 //  35  bundled FFmpeg for drag-and-drop ProRes recording
 //  36  prevent duplicate built-in CFG execution; log rejected network-asset tables
+//  37  release old level assets during native server startup; retain demo cleanup
 namespace mod_build
 {
-	constexpr int NUMBER = 36;
-	constexpr const char* VERSION = "1.0.3";
+	constexpr int NUMBER = 37;
+	constexpr const char* VERSION = "1.0.4";
 }

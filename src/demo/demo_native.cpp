@@ -2049,6 +2049,38 @@ namespace demo_native
 
 		using DB_LoadXAssets_fn = std::int64_t(*)(void*, unsigned int, int);
 		using engine_void_fn = void(*)();
+		DB_LoadXAssets_fn DB_LoadXAssets_orig = nullptr;
+
+		std::int64_t db_load_xassets_stub(void* requests, const unsigned int count, const int mode)
+		{
+			// SV_SpawnServer's existing unload call, before any new map fastfile
+			// or LUI restart. This is shared by private-menu and console launches.
+			// It has synchronized the renderer and set byte_11112EB at this point.
+			// Native mask 0x104 (+ optional 0x80/0x200) can retain flag-8 hub/level
+			// zones. Release that group here using the map-change mask 0x88,
+			// instead of issuing a second teardown in DB_LoadLevelXAssets later.
+			const auto caller = to_ida(_ReturnAddress());
+			if (caller == 0x6DC4A6 && g_release_level && count == 1 && mode == 0
+				&& readable(requests, sizeof(zone_request)))
+			{
+				const auto& incoming = *static_cast<const zone_request*>(requests);
+				if (!incoming.name && incoming.flags_a == 0
+					&& (incoming.flags_b & 0x104u) == 0x104u
+					&& (incoming.flags_b & ~0x384u) == 0)
+				{
+					zone_request unload = incoming;
+					unload.flags_b |= 0x88u;
+					const int before = loaded_zone_count();
+					dump_zone_list("before live map cleanup");
+					reinterpret_cast<engine_void_fn>(0x18F6B0_b)(); // Native map-change preparation.
+					const auto result = DB_LoadXAssets_orig(&unload, count, mode);
+					Console::printf("[assets] live map cleanup: mask 0x%X -> 0x%X, zones %d -> %d",
+						incoming.flags_b, unload.flags_b, before, loaded_zone_count());
+					return result;
+				}
+			}
+			return DB_LoadXAssets_orig(requests, count, mode);
+		}
 
 		// A NULL name matches every name-tagged zone, which is how the engine
 		// releases a whole flag group at once (proven in DB_LoadXAssets: the name
@@ -2182,64 +2214,33 @@ namespace demo_native
 
 		std::int64_t db_load_level_xassets_stub(const char* map, const char flags)
 		{
-			// Act ONLY when CL_Demo_Play_f is the caller. That is the one direct
-			// caller which performs no release of its own; every other caller
-			// (sub_48C0C0, sub_837E0, CL_InitCGame, sub_6DC350) either releases
-			// first or is mid-session, where releasing would be destructive.
-			// Identifying the caller by return address is exact and needs no
-			// state flag, so it works however playback was started â€” our play()
-			// or a bare `cl_demo_play` typed at the console.
-			// CL_Demo_Play_f: IDA 0x910650, size 0x5A0 -> [0x910650, 0x910BF0).
+			// Add the demo-only release for direct CL_Demo_Play_f calls. Live
+			// startup (including SV_SpawnServer at return RVA 0x6DC8BB) owns its
+			// asset lifecycle. An extra sub_1906B0/DB_LoadXAssets pass there can
+			// tear down state before the original loader runs.
+			// Use the caller, not a demo-playing flag: that flag can still be
+			// false while CL_Demo_Play_f prepares playback.
+			// CL_Demo_Play_f: RVA [0x910650, 0x910BF0).
 			const std::uint64_t caller = to_ida(_ReturnAddress());
 			const bool from_demo_play = caller >= 0x910650 && caller < 0x910BF0;
 
-			const char* name = (map && readable(map, 1)) ? map : "<null>";
-			// Only the LEVEL release belongs here. The frontend release is done
-			// far earlier, at CL_Demo_Play_f's entry â€” see the timing note on
-			// release_frontend_zones().
-			//
-			// â­ THE ZONE LEAK (measured 2026-08-10, and it is not demo-specific)
-			//
-			// DB_LoadLevelXAssets' own release is
-			//     v11 = 396; if (!sub_38F590()) v11 = 512;
-			//     DB_LoadXAssets({NULL, 0, v11}, 1, 3);
-			// and sub_38F590() is normally FALSE, so the mask is 512 â€” which
-			// matches NO loaded zone and frees nothing. The engine therefore
-			// relies on the CALLER having released first.
-			//
-			// tools/s2_asset_log.py on a live session log measured the result:
-			//     mp_shipment_s2   zones 9 -> 12
-			//     +3 zones (PURE ADDITION - nothing released), +1285 images
-			//     ACCUMULATED: common_core_mp eng_common_core_mp mp_shipment_s2_path
-			//     RELEASED:    <none>
-			// and of the engine's own masks only 136/396 (bit 3 = 0x8) would have
-			// freed them â€” 388 and 512 match nothing in that set.
-			//
-			// Zones are hundreds of MB each, so this accumulates into gigabytes
-			// across a session. It is the leak.
-			//
-			// So issue the level release for EVERY caller, not just the demo
-			// path. This is safe in a way the frontend release is not:
-			//   * mask 136 touches only flag-8 MAP zones, never UI, so there is
-			//     no LUI use-after-free hazard (that is what crashed gibraltar);
-			//   * a caller that already released (sub_48C0C0, sub_837E0) simply
-			//     finds nothing left to match, making it a no-op;
-			//   * it also clears the map's own zone, so the already-loaded-name
-			//     early return can no longer skip a genuine reload.
-			if (g_release_level)
+			const char* name = GameUtil::safeCString(map, 128);
+			// The frontend release stays at CL_Demo_Play_f entry, before LUI
+			// restarts. The level release belongs only to that demo load.
+			if (from_demo_play && g_release_level)
 			{
-				Console::printf("[assets] DB_LoadLevelXAssets('%s') from IDA_0x%llX%s: "
-					"releasing the previous level (the engine's own release is a "
-					"no-op here â€” mask 512 matches nothing)",
-					name, static_cast<unsigned long long>(caller),
-					from_demo_play ? " (CL_Demo_Play_f)" : "");
+				Console::printf("[assets] DB_LoadLevelXAssets('%s') from IDA_0x%llX "
+					"(CL_Demo_Play_f): releasing the previous demo level",
+					name, static_cast<unsigned long long>(caller));
 				release_level_zones();
 			}
+			else
+			{
+				Console::printf("[assets] DB_LoadLevelXAssets('%s') from IDA_0x%llX: "
+					"engine-owned load (no extra release)",
+					name, static_cast<unsigned long long>(caller));
+			}
 
-			// One line per LEVEL LOAD (a rare event, not a per-frame probe). The zone
-			// count either side is the only evidence that the release above actually
-			// freed anything, so a silent regression to the documented "zones only
-			// ever accumulate" leak stays visible.
 			const int zones_before = loaded_zone_count();
 			const auto r = DB_LoadLevelXAssets_orig(map, flags);
 			Console::printf("[assets] level '%s' loaded: zones %d -> %d",
@@ -6307,6 +6308,19 @@ namespace demo_native
 		// These diagnostic addresses are verified only for this Steam build.
 		if (build_map::current() == build_map::Build::Steam)
 		{
+			constexpr unsigned char unload_expected[] = {
+				0x40, 0x55, 0x57, 0x41, 0x54, 0x41, 0x55, 0x41, 0x57,
+				0x48, 0x81, 0xEC, 0xF0, 0x08, 0x00, 0x00
+			};
+			const auto unload_target = reinterpret_cast<void*>(0xA3F60_b);
+			const bool unload_matches = readable(unload_target, sizeof(unload_expected))
+				&& std::memcmp(unload_target, unload_expected, sizeof(unload_expected)) == 0;
+			const bool unload_hooked = unload_matches && Hook::create("DB_LoadXAssets_live_cleanup",
+				unload_target, reinterpret_cast<void*>(db_load_xassets_stub),
+				reinterpret_cast<void**>(&DB_LoadXAssets_orig));
+			Console::printf("[assets] live map cleanup hook: %s",
+				(unload_hooked && DB_LoadXAssets_orig) ? "OK" : "unavailable (code differs or hook failed)");
+
 			constexpr unsigned char expected[] = {
 				0x40, 0x57, 0x48, 0x83, 0xEC, 0x20, 0x83, 0x79, 0x10, 0x00,
 				0x48, 0x8B, 0xF9
@@ -6321,12 +6335,10 @@ namespace demo_native
 				(hooked && NCS_AddTable_orig) ? "OK" : "unavailable (code differs or hook failed)");
 		}
 
-		// DB_LoadLevelXAssets @ IDA 0xA4840 - 0x1000 = 0xA3840. Hooked for BOTH
-		// live map loads and demo playback (CL_Demo_Play_f and the ordinary
-		// map-load path sub_48C0C0 use the identical five-call idiom), so this
-		// gives the live-vs-demo A/B for free. RULE A3.1: demo_playback.cpp has a
-		// map_zone_load_orchestrator_stub for this address but NEVER installs it
-		// â€” no Hook::create references it â€” so there is no duplicate here.
+		// DB_LoadLevelXAssets @ RVA 0xA4840. Observe live and demo loads;
+		// only direct demo playback gets an extra release.
+		// demo_playback.cpp has an uninstalled stub at this address, so this
+		// remains the only registered hook.
 		const bool level_hooked = Hook::create("DB_LoadLevelXAssets",
 			reinterpret_cast<void*>(0xA3840_b),
 			reinterpret_cast<void*>(db_load_level_xassets_stub),
