@@ -1430,6 +1430,28 @@ namespace demo_playback
 
 			if (!g_play.open())
 			{
+				// Live loading diagnostics, including the PRIMED -> ACTIVE boundary.
+				// Read state only; do not promote a client or bypass streaming gates.
+				if (!demo_native::native_playing())
+				{
+					static int last_state = -1;
+					static DWORD last_report = 0;
+					const int state = demo_game::connstate();
+					const DWORD now = GetTickCount();
+					if (state != last_state || (state == demo_game::CA_PRIMED && now - last_report >= 5000))
+					{
+						demo_game::invalidate_client_active();
+						const void* cl = state >= demo_game::CA_PRIMED ? demo_game::client_active_for() : nullptr;
+						Console::printf("[match] live client %d -> %d: valid=%d flags=0x%X new=%d snapTime=%d",
+							last_state, state,
+							cl ? demo_game::read_i(cl, demo_game::CA_SNAP_VALID) : -1,
+							cl ? demo_game::read_i(cl, demo_game::CA_SNAP_FLAGS) : 0,
+							cl ? demo_game::read_i(cl, demo_game::CA_NEW_SNAPSHOTS) : -1,
+							cl ? demo_game::read_i(cl, demo_game::CA_SNAP_SERVERTIME) : -1);
+						last_state = state;
+						last_report = now;
+					}
+				}
 				return;
 			}
 
@@ -1798,10 +1820,23 @@ namespace demo_playback
 		CL_FirstSnapshot_fn CL_FirstSnapshot_orig = nullptr;
 		std::int64_t cl_first_snapshot_stub(const int local_client_num)
 		{
+			const bool live = local_client_num == 0 && !g_play.open() && !demo_native::native_playing();
+			if (live)
+			{
+				static DWORD last_entry = 0;
+				const DWORD now = GetTickCount();
+				if (!last_entry || now - last_entry >= 5000)
+				{
+					Console::printf("[match] first snapshot enter: connection=%d", demo_game::connstate());
+					last_entry = now;
+				}
+			}
 			const bool was_in_first_snapshot = g_in_first_snapshot;
 			g_in_first_snapshot = true;
 			const auto result = CL_FirstSnapshot_orig(local_client_num);
 			g_in_first_snapshot = was_in_first_snapshot;
+			if (live && demo_game::connstate() == demo_game::CA_ACTIVE)
+				Console::printf("[match] first snapshot activated the live client");
 			return result;
 		}
 

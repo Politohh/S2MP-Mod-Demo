@@ -191,6 +191,8 @@ void hook_SV_Shutdown(const char* finalmsg) {
 void hook_SV_SpawnServer(const char* server, int mapIsPreloaded, int savegame, int isRestart) {
     Console::print("------ Server Initialization ------");
     Console::printf("Server: %s", server);
+    Console::printf("[match] server start: preloaded=%d savegame=%d restart=%d",
+        mapIsPreloaded, savegame, isRestart);
     
     _SV_SpawnServer(server, mapIsPreloaded, savegame, isRestart);
 }

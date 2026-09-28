@@ -2050,22 +2050,35 @@ namespace demo_native
 		using DB_LoadXAssets_fn = std::int64_t(*)(void*, unsigned int, int);
 		using engine_void_fn = void(*)();
 		DB_LoadXAssets_fn DB_LoadXAssets_orig = nullptr;
+		thread_local bool g_console_map_load = false;
+		using LoadingScreen_fn = std::int64_t(*)(const char*);
+		LoadingScreen_fn LoadingScreen_orig = nullptr;
+
+		std::int64_t loading_screen_stub(const char* map)
+		{
+			// SV_SpawnServer calls this only for a map that is not preloaded.
+			// Its earlier unload is skipped when sub_B8C40() returns true (MP).
+			// Scope the replacement to that caller, leaving menu/demo/HQ loads alone.
+			const bool previous = g_console_map_load;
+			g_console_map_load = to_ida(_ReturnAddress()) == 0x6DC518
+				&& reinterpret_cast<int(*)()>(0x8545C0_b)() == 1;
+			const auto result = LoadingScreen_orig(map);
+			g_console_map_load = previous;
+			return result;
+		}
 
 		std::int64_t db_load_xassets_stub(void* requests, const unsigned int count, const int mode)
 		{
-			// SV_SpawnServer's existing unload call, before any new map fastfile
-			// or LUI restart. This is shared by private-menu and console launches.
-			// It has synchronized the renderer and set byte_11112EB at this point.
-			// Native mask 0x104 (+ optional 0x80/0x200) can retain flag-8 hub/level
-			// zones. Release that group here using the map-change mask 0x88,
-			// instead of issuing a second teardown in DB_LoadLevelXAssets later.
 			const auto caller = to_ida(_ReturnAddress());
-			if (caller == 0x6DC4A6 && g_release_level && count == 1 && mode == 0
+			if (caller == 0x48C1CA && g_release_level && count == 1 && mode == 0
 				&& readable(requests, sizeof(zone_request)))
 			{
+				// The menu has synchronized the renderer, set the loading guard,
+				// and prepared its frontend release. Include the old level group
+				// here, before the new loading screen or level assets are installed.
 				const auto& incoming = *static_cast<const zone_request*>(requests);
 				if (!incoming.name && incoming.flags_a == 0
-					&& (incoming.flags_b & 0x104u) == 0x104u
+					&& (incoming.flags_b & 0x184u) == 0x184u
 					&& (incoming.flags_b & ~0x384u) == 0)
 				{
 					zone_request unload = incoming;
@@ -2074,9 +2087,43 @@ namespace demo_native
 					dump_zone_list("before live map cleanup");
 					reinterpret_cast<engine_void_fn>(0x18F6B0_b)(); // Native map-change preparation.
 					const auto result = DB_LoadXAssets_orig(&unload, count, mode);
-					Console::printf("[assets] live map cleanup: mask 0x%X -> 0x%X, zones %d -> %d",
+					Console::printf("[assets] menu map cleanup: mask 0x%X -> 0x%X, zones %d -> %d",
 						incoming.flags_b, unload.flags_b, before, loaded_zone_count());
 					return result;
+				}
+			}
+			if (g_console_map_load && caller == 0xD7B73 && count == 1 && mode == 5
+				&& (g_release_level || g_release_frontend)
+				&& readable(requests, sizeof(zone_request)))
+			{
+				const auto& incoming = *static_cast<const zone_request*>(requests);
+				if (incoming.name && incoming.flags_a == 0x10u && incoming.flags_b == 0x30u)
+				{
+					// sub_D79D0 has already synchronized the renderer (RVA D7B0F).
+					// Free before it queues <map>_load, and before SV_SpawnServer
+					// restarts LUI. A named request only frees matching names, so use
+					// a separate unnamed request, then forward the original intact.
+					// Borrow the native loading guard; the caller clears it after
+					// LUI restart + renderer sync at RVA 6DC53C, before level loading.
+					*reinterpret_cast<std::uint8_t*>(0x11102EB_b) = 1;
+					const int before = loaded_zone_count();
+					dump_zone_list("before console map cleanup");
+					zone_request unload{};
+					if (g_release_frontend)
+					{
+						reinterpret_cast<engine_void_fn>(0x195110_b)();
+						unload.flags_b |= 0x184u;
+						if (!reinterpret_cast<bool(*)()>(0x38E590_b)()) unload.flags_b |= 0x200u;
+					}
+					if (g_release_level)
+					{
+						reinterpret_cast<engine_void_fn>(0x18F6B0_b)();
+						unload.flags_b |= 0x88u;
+					}
+					DB_LoadXAssets_orig(&unload, 1u, 0);
+					Console::printf("[assets] console map cleanup: mask 0x%X, zones %d -> %d",
+						unload.flags_b, before, loaded_zone_count());
+					g_console_map_load = false;
 				}
 			}
 			return DB_LoadXAssets_orig(requests, count, mode);
@@ -6320,6 +6367,22 @@ namespace demo_native
 				reinterpret_cast<void**>(&DB_LoadXAssets_orig));
 			Console::printf("[assets] live map cleanup hook: %s",
 				(unload_hooked && DB_LoadXAssets_orig) ? "OK" : "unavailable (code differs or hook failed)");
+			constexpr unsigned char loading_expected[] = {
+				0x48, 0x89, 0x5C, 0x24, 0x10, 0x48, 0x89, 0x6C, 0x24, 0x18,
+				0x48, 0x89, 0x74, 0x24, 0x20
+			};
+			constexpr unsigned char clear_guard_expected[] = {0xC6, 0x05, 0xA8, 0x4D, 0xA3, 0x00, 0x00};
+			const auto loading_target = reinterpret_cast<void*>(0xD69D0_b);
+			const auto clear_guard = reinterpret_cast<void*>(0x6DB53C_b);
+			const bool loading_matches = readable(loading_target, sizeof(loading_expected))
+				&& std::memcmp(loading_target, loading_expected, sizeof(loading_expected)) == 0
+				&& readable(clear_guard, sizeof(clear_guard_expected))
+				&& std::memcmp(clear_guard, clear_guard_expected, sizeof(clear_guard_expected)) == 0;
+			const bool loading_hooked = unload_hooked && DB_LoadXAssets_orig && loading_matches
+				&& Hook::create("LoadingScreen_console_cleanup", loading_target,
+					reinterpret_cast<void*>(loading_screen_stub), reinterpret_cast<void**>(&LoadingScreen_orig));
+			Console::printf("[assets] console loading-stage hook: %s",
+				(loading_hooked && LoadingScreen_orig) ? "OK" : "unavailable (code differs or hook failed)");
 
 			constexpr unsigned char expected[] = {
 				0x40, 0x57, 0x48, 0x83, 0xEC, 0x20, 0x83, 0x79, 0x10, 0x00,
