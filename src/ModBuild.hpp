@@ -45,8 +45,9 @@
 //  36  prevent duplicate built-in CFG execution; log rejected network-asset tables
 //  37  release old level assets during native server startup; retain demo cleanup
 //  38  use Multiplayer loading stages for console/menu cleanup; log client activation
+//  39  restore native console unload timing; trace live packet and server-client progress
 namespace mod_build
 {
-	constexpr int NUMBER = 38;
-	constexpr const char* VERSION = "1.0.5";
+	constexpr int NUMBER = 39;
+	constexpr const char* VERSION = "1.0.6";
 }

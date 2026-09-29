@@ -45,6 +45,7 @@
 #include "demo_native.hpp"
 
 #include "demo/demo_game.hpp"
+#include "demo/live_match_diagnostics.hpp"
 #include "demo/demo_playback.hpp"
 #include "demo/demo_utils.hpp"
 
@@ -2050,82 +2051,50 @@ namespace demo_native
 		using DB_LoadXAssets_fn = std::int64_t(*)(void*, unsigned int, int);
 		using engine_void_fn = void(*)();
 		DB_LoadXAssets_fn DB_LoadXAssets_orig = nullptr;
-		thread_local bool g_console_map_load = false;
-		using LoadingScreen_fn = std::int64_t(*)(const char*);
-		LoadingScreen_fn LoadingScreen_orig = nullptr;
+		using IsMultiplayer_fn = bool(*)();
+		IsMultiplayer_fn IsMultiplayer_orig = nullptr;
 
-		std::int64_t loading_screen_stub(const char* map)
+		bool live_unload_mode_stub()
 		{
-			// SV_SpawnServer calls this only for a map that is not preloaded.
-			// Its earlier unload is skipped when sub_B8C40() returns true (MP).
-			// Scope the replacement to that caller, leaving menu/demo/HQ loads alone.
-			const bool previous = g_console_map_load;
-			g_console_map_load = to_ida(_ReturnAddress()) == 0x6DC518
-				&& reinterpret_cast<int(*)()>(0x8545C0_b)() == 1;
-			const auto result = LoadingScreen_orig(map);
-			g_console_map_load = previous;
-			return result;
+			const bool multiplayer = IsMultiplayer_orig();
+			// SV_SpawnServer's non-preloaded path skips its own unload in MP.
+			// Select that existing block at this one call site only. It owns the
+			// renderer fence, loading guard, asset request and subsequent startup.
+			// Other mode queries (including later MP connection setup) are native.
+			if (multiplayer && g_release_frontend && to_ida(_ReturnAddress()) == 0x6DC448)
+			{
+				Console::printf("[assets] console map: using native server unload stage");
+				return false;
+			}
+			return multiplayer;
 		}
 
 		std::int64_t db_load_xassets_stub(void* requests, const unsigned int count, const int mode)
 		{
-			const auto caller = to_ida(_ReturnAddress());
-			if (caller == 0x48C1CA && g_release_level && count == 1 && mode == 0
-				&& readable(requests, sizeof(zone_request)))
+			// This call is reached after the engine's renderer sync and native
+			// frontend preparation, before loading-screen assets are queued.
+			// A named loading-screen request must never release unrelated zones.
+			if (to_ida(_ReturnAddress()) == 0x6DC4A6 && g_release_level
+				&& count == 1 && mode == 0 && readable(requests, sizeof(zone_request)))
 			{
-				// The menu has synchronized the renderer, set the loading guard,
-				// and prepared its frontend release. Include the old level group
-				// here, before the new loading screen or level assets are installed.
 				const auto& incoming = *static_cast<const zone_request*>(requests);
 				if (!incoming.name && incoming.flags_a == 0
-					&& (incoming.flags_b & 0x184u) == 0x184u
+					&& (incoming.flags_b & 0x104u) == 0x104u
 					&& (incoming.flags_b & ~0x384u) == 0)
 				{
 					zone_request unload = incoming;
 					unload.flags_b |= 0x88u;
 					const int before = loaded_zone_count();
-					dump_zone_list("before live map cleanup");
-					reinterpret_cast<engine_void_fn>(0x18F6B0_b)(); // Native map-change preparation.
+					dump_zone_list("before native console map cleanup");
+					reinterpret_cast<engine_void_fn>(0x18F6B0_b)();
 					const auto result = DB_LoadXAssets_orig(&unload, count, mode);
-					Console::printf("[assets] menu map cleanup: mask 0x%X -> 0x%X, zones %d -> %d",
+					Console::printf("[assets] native console map cleanup: mask 0x%X -> 0x%X, zones %d -> %d",
 						incoming.flags_b, unload.flags_b, before, loaded_zone_count());
 					return result;
 				}
 			}
-			if (g_console_map_load && caller == 0xD7B73 && count == 1 && mode == 5
-				&& (g_release_level || g_release_frontend)
-				&& readable(requests, sizeof(zone_request)))
-			{
-				const auto& incoming = *static_cast<const zone_request*>(requests);
-				if (incoming.name && incoming.flags_a == 0x10u && incoming.flags_b == 0x30u)
-				{
-					// sub_D79D0 has already synchronized the renderer (RVA D7B0F).
-					// Free before it queues <map>_load, and before SV_SpawnServer
-					// restarts LUI. A named request only frees matching names, so use
-					// a separate unnamed request, then forward the original intact.
-					// Borrow the native loading guard; the caller clears it after
-					// LUI restart + renderer sync at RVA 6DC53C, before level loading.
-					*reinterpret_cast<std::uint8_t*>(0x11102EB_b) = 1;
-					const int before = loaded_zone_count();
-					dump_zone_list("before console map cleanup");
-					zone_request unload{};
-					if (g_release_frontend)
-					{
-						reinterpret_cast<engine_void_fn>(0x195110_b)();
-						unload.flags_b |= 0x184u;
-						if (!reinterpret_cast<bool(*)()>(0x38E590_b)()) unload.flags_b |= 0x200u;
-					}
-					if (g_release_level)
-					{
-						reinterpret_cast<engine_void_fn>(0x18F6B0_b)();
-						unload.flags_b |= 0x88u;
-					}
-					DB_LoadXAssets_orig(&unload, 1u, 0);
-					Console::printf("[assets] console map cleanup: mask 0x%X, zones %d -> %d",
-						unload.flags_b, before, loaded_zone_count());
-					g_console_map_load = false;
-				}
-			}
+			// Menu preloading and all loading-screen requests retain the exact
+			// native arguments. Build 38's extra teardown here is removed.
 			return DB_LoadXAssets_orig(requests, count, mode);
 		}
 
@@ -2730,6 +2699,8 @@ namespace demo_native
 				{
 					const unsigned lo = data[0] & 0x0F;
 					++g_opcode_hist[lo];
+					if (!g_native_playing && !demo_playback::is_playing() && client == 0)
+						live_match_diagnostics::opcodes[lo].fetch_add(1, std::memory_order_relaxed);
 					// First handful only â€” 1735 snapshots would drown the console.
 					if (g_internal_calls < 12)
 					{
@@ -6367,22 +6338,25 @@ namespace demo_native
 				reinterpret_cast<void**>(&DB_LoadXAssets_orig));
 			Console::printf("[assets] live map cleanup hook: %s",
 				(unload_hooked && DB_LoadXAssets_orig) ? "OK" : "unavailable (code differs or hook failed)");
-			constexpr unsigned char loading_expected[] = {
-				0x48, 0x89, 0x5C, 0x24, 0x10, 0x48, 0x89, 0x6C, 0x24, 0x18,
-				0x48, 0x89, 0x74, 0x24, 0x20
+			constexpr unsigned char mode_expected[] = {
+				0x48, 0x83, 0xEC, 0x28, 0xE8, 0x77, 0xC9, 0x79, 0x00,
+				0x83, 0xF8, 0x01, 0x0F, 0x94, 0xC0, 0x48, 0x83, 0xC4, 0x28, 0xC3
 			};
-			constexpr unsigned char clear_guard_expected[] = {0xC6, 0x05, 0xA8, 0x4D, 0xA3, 0x00, 0x00};
-			const auto loading_target = reinterpret_cast<void*>(0xD69D0_b);
-			const auto clear_guard = reinterpret_cast<void*>(0x6DB53C_b);
-			const bool loading_matches = readable(loading_target, sizeof(loading_expected))
-				&& std::memcmp(loading_target, loading_expected, sizeof(loading_expected)) == 0
-				&& readable(clear_guard, sizeof(clear_guard_expected))
-				&& std::memcmp(clear_guard, clear_guard_expected, sizeof(clear_guard_expected)) == 0;
-			const bool loading_hooked = unload_hooked && DB_LoadXAssets_orig && loading_matches
-				&& Hook::create("LoadingScreen_console_cleanup", loading_target,
-					reinterpret_cast<void*>(loading_screen_stub), reinterpret_cast<void**>(&LoadingScreen_orig));
-			Console::printf("[assets] console loading-stage hook: %s",
-				(loading_hooked && LoadingScreen_orig) ? "OK" : "unavailable (code differs or hook failed)");
+			// Validate the complete mode predicate and its server call/test/branch.
+			constexpr unsigned char branch_expected[] = {
+				0xE8, 0xF8, 0xC7, 0x9D, 0xFF, 0x84, 0xC0, 0x75, 0x76
+			};
+			const auto mode_target = reinterpret_cast<void*>(0xB7C40_b);
+			const auto branch = reinterpret_cast<void*>(0x6DB443_b);
+			const bool mode_matches = readable(mode_target, sizeof(mode_expected))
+				&& std::memcmp(mode_target, mode_expected, sizeof(mode_expected)) == 0
+				&& readable(branch, sizeof(branch_expected))
+				&& std::memcmp(branch, branch_expected, sizeof(branch_expected)) == 0;
+			const bool mode_hooked = unload_hooked && DB_LoadXAssets_orig && mode_matches
+				&& Hook::create("IsMultiplayer_native_console_unload", mode_target,
+					reinterpret_cast<void*>(live_unload_mode_stub), reinterpret_cast<void**>(&IsMultiplayer_orig));
+			Console::printf("[assets] native console unload route: %s",
+				(mode_hooked && IsMultiplayer_orig) ? "OK" : "unavailable (code differs or hook failed)");
 
 			constexpr unsigned char expected[] = {
 				0x40, 0x57, 0x48, 0x83, 0xEC, 0x20, 0x83, 0x79, 0x10, 0x00,

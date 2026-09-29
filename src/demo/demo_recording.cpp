@@ -2,6 +2,7 @@
 #include "demo_recording.hpp"
 
 #include "demo/demo_game.hpp"
+#include "demo/live_match_diagnostics.hpp"
 #include "demo/demo_native.hpp"
 #include "demo/demo_playback.hpp"
 #include "demo/demo_utils.hpp"
@@ -323,6 +324,8 @@ namespace demo_recording
 			{
 				return;
 			}
+			const bool live = client_num == 0 && !demo_playback::is_playing() && !demo_native::native_playing();
+			if (live) live_match_diagnostics::parse_enter.fetch_add(1, std::memory_order_relaxed);
 			const int old_cs = demo_game::connstate();
 			const int entry_readcount = msg ? msg->readcount : 0;
 
@@ -335,6 +338,7 @@ namespace demo_recording
 			demo_native::repair_gamestate_message(msg);
 
 			CL_ParseServerMessage_orig(client_num, msg);
+			if (live) live_match_diagnostics::parse_leave.fetch_add(1, std::memory_order_relaxed);
 			const int new_cs = demo_game::connstate();
 			if (!demo_playback::is_playing() && msg && msg->data && msg->cursize > 0)
 			{

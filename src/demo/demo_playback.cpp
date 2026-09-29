@@ -3,6 +3,7 @@
 #include "demo/demo_native.hpp"
 
 #include "demo/demo_game.hpp"
+#include "demo/live_match_diagnostics.hpp"
 #include "demo/demo_timescale.hpp"
 #include "demo/demo_utils.hpp"
 #include "demo/theater_camera.hpp"
@@ -1448,6 +1449,7 @@ namespace demo_playback
 							cl ? demo_game::read_i(cl, demo_game::CA_SNAP_FLAGS) : 0,
 							cl ? demo_game::read_i(cl, demo_game::CA_NEW_SNAPSHOTS) : -1,
 							cl ? demo_game::read_i(cl, demo_game::CA_SNAP_SERVERTIME) : -1);
+						live_match_diagnostics::report(state);
 						last_state = state;
 						last_report = now;
 					}
@@ -1646,7 +1648,10 @@ namespace demo_playback
 			{
 				return;
 			}
+			const bool live = local_client_num == 0 && !g_play.open() && !demo_native::native_playing();
+			if (live) live_match_diagnostics::write_enter.fetch_add(1, std::memory_order_relaxed);
 			CL_WritePacket_orig(local_client_num);
+			if (live) live_match_diagnostics::write_leave.fetch_add(1, std::memory_order_relaxed);
 		}
 
 		// Clamp target seq so seek/fast-forward never runs past what the theater feed has buffered.
@@ -1848,6 +1853,8 @@ namespace demo_playback
 		void* cl_create_cmd_stub(void* cmd, const int local_client_num)
 		{
 			g_play.createcmd_enter.fetch_add(1, std::memory_order_relaxed);
+			if (local_client_num == 0 && !g_play.open() && !demo_native::native_playing())
+				live_match_diagnostics::create_commands.fetch_add(1, std::memory_order_relaxed);
 			// Wii pointer aiming rides this stub (RULE A3.1: no second hook on
 			// CL_CreateCmd). It snapshots the live angles, lets the engine apply
 			// the mouse, then repacks the usercmd. No-op unless `wii_aim` is on
