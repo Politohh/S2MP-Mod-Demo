@@ -37,6 +37,7 @@
 #include <dxgi.h>
 
 #include <algorithm>
+#include <atomic>
 #include <format>
 #include <string>
 #include <vector>
@@ -52,6 +53,7 @@ namespace demo_gui
 	{
 
 		bool g_open = false;
+		std::atomic<bool> g_close_on_demo_stop{false};
 
 		// Result of the last "Fix Selected Demo" press, shown under the button.
 		std::string g_native_fix_msg;
@@ -665,6 +667,7 @@ namespace demo_gui
 			ImGui::BeginDisabled(!demo_player::playing());
 			if (ImGui::Button("Stop", ImVec2(90, 0)))
 			{
+				g_open = false;
 				GameUtil::Cbuf_AddText(LOCAL_CLIENT_0, "demo_stop");
 			}
 			ImGui::EndDisabled();
@@ -2756,6 +2759,8 @@ namespace demo_gui
 		HRESULT STDMETHODCALLTYPE present_hook(IDXGISwapChain* swap, const UINT sync, const UINT flags)
 		{
 			init_imgui(swap);
+			if (g_close_on_demo_stop.exchange(false, std::memory_order_acq_rel))
+				g_open = false;
 			handle_hotkeys_present_only();
 			update_input_capture();
 			// PROBE ONLY, native playback only: watches the viewmodel `hide` byte
@@ -2995,5 +3000,10 @@ namespace demo_gui
 	void toggle()
 	{
 		g_open = !g_open;
+	}
+
+	void on_demo_stop()
+	{
+		g_close_on_demo_stop.store(true, std::memory_order_release);
 	}
 }

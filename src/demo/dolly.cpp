@@ -168,7 +168,7 @@ namespace dolly
 		void seek_and_play(const int time_ms)
 		{
 			GameUtil::Cbuf_AddText(LOCAL_CLIENT_0,
-				std::format("demo_seek_to {} play", time_ms));
+				std::format("demo_seek_to {} play free", time_ms));
 		}
 
 		using CL_Demo_FreeCameraMove_t = std::int64_t(__fastcall*)(std::int64_t, std::int64_t);

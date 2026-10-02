@@ -190,12 +190,13 @@ namespace demo_camera
         void __fastcall angles_to_axis_stub(const float* angles, float* axis)
         {
             const auto caller = reinterpret_cast<std::uintptr_t>(_ReturnAddress());
-            if (caller == g_freecam_axis_return && demo_native::native_playing()
+            if (caller == g_freecam_axis_return && demo_is_playing()
                 && demo_native::cgame_active() && !demo_native::seek_in_progress()
-                && demo_native::camera_mode() == 2 && readable(angles, 16)
+                && theater_camera::get_mode() == theater_camera::THEATER_CAMERA_FREECAM
+                && readable(angles, 12)
                 && readable(axis, 36) && std::isfinite(g_roll))
             {
-                alignas(16) float desired[4];
+                float desired[3];
                 std::memcpy(desired, angles, sizeof(desired));
                 g_final_roll_input.store(desired[2], std::memory_order_relaxed);
                 desired[2] = g_roll;

@@ -5,10 +5,12 @@
 #include "Console.hpp"
 #include "GameUtil.hpp"
 #include "demo/demo_library.hpp"
+#include "demo/demo_gui.hpp"
 #include "demo/demo_native.hpp"
 #include "demo/demo_playback.hpp"
 #include "demo/demo_recording.hpp"
 #include "demo/demo_utils.hpp"
+#include "demo/theater_camera.hpp"
 
 #include <algorithm>
 #include <cstdlib>
@@ -178,11 +180,17 @@ namespace demo_player
 			}
             const bool resume = args->argc[args->nesting] >= 3
                 && _stricmp(args->argv[args->nesting][2], "play") == 0;
+			const bool start_freecam = args->argc[args->nesting] >= 4
+				&& _stricmp(args->argv[args->nesting][3], "free") == 0;
+			if (start_freecam)
+				theater_camera::set_mode(theater_camera::THEATER_CAMERA_FREECAM);
 			if (!seek_absolute(std::atoi(args->argv[args->nesting][1]), resume))
             {
                 Console::printf("[demo] requested seek failed; not resuming playback.");
                 return;
             }
+			if (start_freecam && !demo_native::seek_in_progress())
+				theater_camera::set_mode(theater_camera::THEATER_CAMERA_FREECAM);
 			if (resume && !demo_native::seek_in_progress() && paused())
 			{
 				toggle_pause();
@@ -400,6 +408,7 @@ namespace demo_player
 
 	void stop(bool cancel_restart)
 	{
+		demo_gui::on_demo_stop();
         if (cancel_restart)
         {
             demo_native::cancel_restart_seek();
