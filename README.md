@@ -1,4 +1,4 @@
-# S2MP Mod v1.0.2
+# S2MP Mod v1.0.7
 
 [![Release downloads](https://img.shields.io/github/downloads/Politohh/S2MP-Mod-Demo/total?label=release%20downloads)](https://github.com/Politohh/S2MP-Mod-Demo/releases)
 [![README views](https://hits.sh/github.com/Politohh/S2MP-Mod-Demo.svg?label=README%20views)](https://hits.sh/github.com/Politohh/S2MP-Mod-Demo/)
@@ -11,11 +11,11 @@ You can also play normally on Steam servers with the client running. Turn on aut
 
 [Rattpak made the original S2MP Mod](https://github.com/Rattpak/S2MP-Mod). [Josh (josh155) built the demo-w2dr branch](https://github.com/josh155/S2MP-Mod/tree/demo-w2dr) and did about 90% of the work on this version. Josh handed the project to me and approved its release. serv tested the builds and helped catch issues. The original Git history is still here; [CREDITS.md](CREDITS.md) has the source and third-party credits.
 
-v1.0.2 is Build 35. FFmpeg is now included for ProRes recording. The cinematic tools are unchanged, `dolly_slow_clock` stays off by default, and the `com_maxfps` limit is 1000.
+v1.0.7 is Build 40. J now selects the free camera before starting a dolly path, stopping a demo closes the tools menu to release its input capture, and camera roll also applies to custom demos. This release also includes the config-loading and map-cleanup changes since Build 35. FFmpeg is included, `dolly_slow_clock` stays off by default, and the `com_maxfps` limit is 1000.
 
 ## Install
 
-1. Download [S2MP-Mod-v1.0.2-build-35.zip](https://github.com/Politohh/S2MP-Mod-Demo/releases/download/v1.0.2/S2MP-Mod-v1.0.2-build-35.zip) and extract it.
+1. Download [S2MP-Mod-v1.0.7-build-40.zip](https://github.com/Politohh/S2MP-Mod-Demo/releases/download/v1.0.7/S2MP-Mod-v1.0.7-build-40.zip) and extract it.
 2. Close WWII. Copy the extracted files and folders into your WWII game folder, next to s2_mp64_ship.exe. Replace older copies when asked.
 3. Start S2MP-Launcher.exe and choose Multiplayer. Press F9 or Insert to open the tools menu.
 
@@ -30,7 +30,7 @@ The ZIP includes the launcher, mod DLL, FFmpeg for ProRes recording, instruction
 - The Recording tab captures ProRes with the included FFmpeg. F5 starts or stops capture. ReShade effects need the compatible add-on setup in [RESHADE-SETUP.txt](docs/RESHADE-SETUP.txt).
 - CineBot is there for private/custom matches. ADS + your Use key spawns a bot at the crosshair; F7 moves the selected bot and F8 toggles freeze.
 
-This rollback also includes the Host, Servers, Players, and developer controls from Build 30.
+Host, Servers, Players, and developer controls are also included.
 
 ## In game
 
